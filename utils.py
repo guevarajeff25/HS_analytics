@@ -248,6 +248,66 @@ def compute_hitting_metrics(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+import math
+
+def ip_to_outs(ip) -> int:
+    """
+    Convert baseball innings to outs.
+    Accepts:
+      - "12.2" meaning 12 innings + 2 outs
+      - 12.2 (float) (same meaning)
+      - "12" or 12
+    Returns integer outs.
+    """
+    if ip is None:
+        return 0
+
+    # Normalize to string safely
+    s = str(ip).strip()
+    if s == "" or s.lower() in {"nan", "none"}:
+        return 0
+
+    try:
+        # handle whole innings only
+        if "." not in s:
+            whole = int(float(s))
+            return whole * 3
+
+        whole_str, frac_str = s.split(".", 1)
+        whole = int(float(whole_str)) if whole_str else 0
+
+        # frac may come in as "1", "2", "0", "10" (from floats), etc.
+        # We only care about the first digit in baseball notation.
+        frac_digit = frac_str[:1] if frac_str else "0"
+        if frac_digit not in {"0", "1", "2"}:
+            # if it's something weird, fall back to numeric interpretation
+            v = float(s)
+            whole = int(math.floor(v))
+            frac = round(v - whole, 6)
+            # attempt map .333/.667 etc → 1/2 outs
+            if abs(frac - (1/3)) < 0.01:
+                return whole * 3 + 1
+            if abs(frac - (2/3)) < 0.01:
+                return whole * 3 + 2
+            return whole * 3
+
+        outs = int(frac_digit)
+        return whole * 3 + outs
+    except Exception:
+        return 0
+
+
+def outs_to_ip_true(outs: int) -> float:
+    """Outs -> true innings as a float (e.g., 38 outs = 12.6667 innings)."""
+    return float(outs) / 3.0
+
+
+def outs_to_ip_display(outs: int) -> str:
+    """Outs -> baseball display innings (e.g., 38 outs = '12.2')."""
+    whole = outs // 3
+    rem = outs % 3
+    return f"{whole}.{rem}"
+    
 def compute_pitching_metrics(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or not len(df):
         return df

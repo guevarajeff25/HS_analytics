@@ -2,6 +2,9 @@ import os
 import streamlit as st
 import pandas as pd
 
+import utils
+st.sidebar.caption(f"utils loaded from: {utils.__file__}")
+st.sidebar.caption(f"app running from: {__file__}")
 from utils import (
     load_dataset,
     compute_hitting_metrics,

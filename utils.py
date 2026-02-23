@@ -44,9 +44,25 @@ def ip_to_outs(ip_val) -> int:
 
 
 def outs_to_ip(outs: int) -> float:
+    """Numeric innings (outs/3) for calculations."""
     if outs <= 0:
         return 0.0
     return outs / 3.0
+
+
+def outs_to_ip_str(outs: int) -> str:
+    """Baseball display IP string: 37 outs -> '12.1', 38 outs -> '12.2'."""
+    try:
+        outs = int(outs)
+    except Exception:
+        return "0.0"
+
+    if outs <= 0:
+        return "0.0"
+
+    whole = outs // 3
+    rem = outs % 3
+    return f"{whole}.{rem}"
 
 
 # ------------------------------------------------------------
@@ -262,7 +278,10 @@ def compute_hitting_metrics(df: pd.DataFrame) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = 0
 
-    df = _coerce_numeric(df, ["PA", "AB", "BB", "SO", "H", "2B", "3B", "HR", "HBP", "SB", "CS", "TB", "XBH", "R", "RBI"])
+    df = _coerce_numeric(
+        df,
+        ["PA", "AB", "BB", "SO", "H", "2B", "3B", "HR", "HBP", "SB", "CS", "TB", "XBH", "R", "RBI"],
+    )
 
     if (df["TB"] == 0).all():
         singles = (df["H"] - df["2B"] - df["3B"] - df["HR"]).clip(lower=0)
@@ -299,12 +318,13 @@ def compute_pitching_metrics(df: pd.DataFrame) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = 0
 
-    # Coerce numeric, but keep IP as-is for display too
+    # Coerce numeric
     df = _coerce_numeric(df, ["IP", "BF", "H", "R", "ER", "BB", "SO", "HR", "#P", "HBP", "WP"])
 
-    # Convert IP to outs-aware innings for correct rates
-    outs = df["IP"].apply(ip_to_outs)
-    df["IP_TRUE"] = outs.apply(outs_to_ip)
+    # ✅ Outs-aware IP for math + proper baseball display
+    df["IP_OUTS"] = df["IP"].apply(ip_to_outs).astype(int)
+    df["IP_TRUE"] = df["IP_OUTS"].apply(outs_to_ip)          # numeric (for calculations)
+    df["IP_DISPLAY"] = df["IP_OUTS"].apply(outs_to_ip_str)   # string like '12.2' (for UI)
 
     denom = df["IP_TRUE"].replace(0, pd.NA)
 
@@ -339,7 +359,26 @@ def top_table(df: pd.DataFrame, metric: str, n: int = 10, ascending: bool = Fals
     cols = ["PLAYER", metric]
 
     # ✅ Add AVG so it appears in leaderboard rows
-    for extra in ["AVG", "PA", "AB", "H", "HR", "BB", "SO", "OPS", "OBP", "SLG", "IP", "BF", "ER", "WHIP", "TC", "E", "FPCT"]:
+    # ✅ Prefer IP_DISPLAY so you don't see 12.7 anywhere
+    for extra in [
+        "AVG",
+        "PA",
+        "AB",
+        "H",
+        "HR",
+        "BB",
+        "SO",
+        "OPS",
+        "OBP",
+        "SLG",
+        "IP_DISPLAY",
+        "BF",
+        "ER",
+        "WHIP",
+        "TC",
+        "E",
+        "FPCT",
+    ]:
         if extra in df.columns and extra not in cols:
             cols.append(extra)
 
@@ -363,7 +402,9 @@ def lineup_suggestions(bat_df: pd.DataFrame, min_pa: int = 10) -> pd.DataFrame:
 
     top3 = df.sort_values("top_order_score", ascending=False).head(3).copy()
     mid3 = df[~df["PLAYER"].isin(top3["PLAYER"])].sort_values("middle_order_score", ascending=False).head(3).copy()
-    bottom3 = df[~df["PLAYER"].isin(list(top3["PLAYER"]) + list(mid3["PLAYER"]))].sort_values("bottom_order_score", ascending=False).head(3).copy()
+    bottom3 = df[
+        ~df["PLAYER"].isin(list(top3["PLAYER"]) + list(mid3["PLAYER"]))
+    ].sort_values("bottom_order_score", ascending=False).head(3).copy()
 
     def _slot_rows(slot_start, group, why):
         rows = []
@@ -389,3 +430,4 @@ def lineup_suggestions(bat_df: pd.DataFrame, min_pa: int = 10) -> pd.DataFrame:
     rows += _slot_rows(7, bottom3, "Bottom (contact/speed/turnover)")
 
     return pd.DataFrame(rows).sort_values("Slot")
+```0

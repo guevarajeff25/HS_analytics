@@ -142,7 +142,7 @@ def int_safe(x) -> int:
 def df_for_display(df: pd.DataFrame) -> pd.DataFrame:
     """
     Force strings so Streamlit doesn’t reformat numeric columns.
-    (Especially helpful for things like IP_DISPLAY.)
+    (Especially helpful for things like IP.)
     """
     return df.astype(str)
 
@@ -498,9 +498,9 @@ if page == "Team Overview":
                     for col, d in dec.items():
                         if col in out.columns:
                             out[col] = pd.to_numeric(out[col], errors="coerce").apply(lambda v: fmt_no0(v, d))
-                    # Keep IP_DISPLAY as-is (already a string like "12.2"), but ensure it's a string
-                    if "IP_DISPLAY" in out.columns:
-                        out["IP_DISPLAY"] = out["IP_DISPLAY"].astype(str)
+                    # Keep IP as-is (already a string like "12.2"), but ensure it's a string
+                    if "IP" in out.columns:
+                        out["IP"] = out["IP"].astype(str)
                     return out
 
                 with tabs[0]:
@@ -571,7 +571,7 @@ elif page == "Recruiting Profile":
                 b.metric("WHIP", fmt_no0(ppit.get("WHIP", 0), 2))
                 c.metric("K/BB", fmt_no0(ppit.get("K/BB", 0), 2))
                 # ✅ show baseball-style IP, not 12.7
-                d.metric("IP", str(ppit.get("IP_DISPLAY", "0.0")))
+                d.metric("IP", str(ppit.get("IP", "0.0")))
             else:
                 st.info("No metrics available for this player yet.")
 
@@ -678,7 +678,7 @@ elif page == "Player Profiles":
                     st.caption("No pitching data.")
                 else:
                     r1 = st.columns(2)
-                    r1[0].metric("IP", str(ppit.get("IP_DISPLAY", "0.0")))
+                    r1[0].metric("IP", str(ppit.get("IP", "0.0")))
                     r1[1].metric("ERA", fmt_no0(ppit.get("ERA", 0), 2))
 
                     r2 = st.columns(2)

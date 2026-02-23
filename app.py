@@ -1,14 +1,15 @@
 import os
-import streamlit as st
+
 import pandas as pd
+import streamlit as st
 
 from utils import (
-    load_dataset,
+    compute_fielding_metrics,
     compute_hitting_metrics,
     compute_pitching_metrics,
-    compute_fielding_metrics,
-    top_table,
     lineup_suggestions,
+    load_dataset,
+    top_table,
 )
 
 # ============================================================
@@ -34,7 +35,8 @@ h1, h2, h3 {{ letter-spacing: -0.02em; }}
 section[data-testid="stSidebar"] {{
   border-right: 3px solid {HERITAGE_NAVY};
 }}
-section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {{
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 {{
   color: {HERITAGE_NAVY};
 }}
 
@@ -74,17 +76,19 @@ section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {{
 [data-testid="stDataFrame"] {{ border-radius: 14px; overflow: hidden; }}
 
 /* Buttons */
-.stDownloadButton button, .stButton button {{
+.stDownloadButton button,
+.stButton button {{
   border-radius: 12px !important;
   border: 1px solid rgba(49,51,63,.18) !important;
 }}
-.stDownloadButton button:hover, .stButton button:hover {{
+.stDownloadButton button:hover,
+.stButton button:hover {{
   border-color: {HERITAGE_NAVY} !important;
 }}
 
 /* Pills */
 .pill {{
-  display:inline-block;
+  display: inline-block;
   padding: 6px 10px;
   border-radius: 999px;
   background: rgba(95,168,211,.12);
@@ -198,49 +202,49 @@ def team_batting_totals(bat_df: pd.DataFrame | None) -> dict:
       K% = SO/PA (PA if present else AB+BB+HBP+SF)
       BB% = BB/PA
     """
-    AB = sum_col(bat_df, "AB")
-    H = sum_col(bat_df, "H")
-    BB = sum_col(bat_df, "BB")
-    HBP = sum_col(bat_df, "HBP")
-    SF = sum_col(bat_df, "SF")
-    SO = sum_col(bat_df, "SO")
-    PA = sum_col(bat_df, "PA")
+    ab = sum_col(bat_df, "AB")
+    h = sum_col(bat_df, "H")
+    bb = sum_col(bat_df, "BB")
+    hbp = sum_col(bat_df, "HBP")
+    sf = sum_col(bat_df, "SF")
+    so = sum_col(bat_df, "SO")
+    pa = sum_col(bat_df, "PA")
 
     if bat_df is not None and not bat_df.empty and "TB" in bat_df.columns:
-        TB = sum_col(bat_df, "TB")
+        tb = sum_col(bat_df, "TB")
     else:
-        oneB = sum_col(bat_df, "1B")
-        twoB = sum_col(bat_df, "2B")
-        threeB = sum_col(bat_df, "3B")
-        HR = sum_col(bat_df, "HR")
-        TB = oneB + 2 * twoB + 3 * threeB + 4 * HR
+        one_b = sum_col(bat_df, "1B")
+        two_b = sum_col(bat_df, "2B")
+        three_b = sum_col(bat_df, "3B")
+        hr = sum_col(bat_df, "HR")
+        tb = one_b + 2 * two_b + 3 * three_b + 4 * hr
 
-    if PA <= 0:
-        PA = AB + BB + HBP + SF
+    if pa <= 0:
+        pa = ab + bb + hbp + sf
 
-    AVG = (H / AB) if AB > 0 else 0.0
-    OBP_den = (AB + BB + HBP + SF) if (AB + BB + HBP + SF) > 0 else 0.0
-    OBP = ((H + BB + HBP) / OBP_den) if OBP_den > 0 else 0.0
-    SLG = (TB / AB) if AB > 0 else 0.0
-    OPS = OBP + SLG
-    Kp = (SO / PA) if PA > 0 else 0.0
-    BBp = (BB / PA) if PA > 0 else 0.0
+    avg = (h / ab) if ab > 0 else 0.0
+    obp_den = (ab + bb + hbp + sf) if (ab + bb + hbp + sf) > 0 else 0.0
+    obp = ((h + bb + hbp) / obp_den) if obp_den > 0 else 0.0
+    slg = (tb / ab) if ab > 0 else 0.0
+    ops = obp + slg
+    kp = (so / pa) if pa > 0 else 0.0
+    bbp = (bb / pa) if pa > 0 else 0.0
 
     return {
-        "AB": AB,
-        "H": H,
-        "BB": BB,
-        "HBP": HBP,
-        "SF": SF,
-        "SO": SO,
-        "PA": PA,
-        "TB": TB,
-        "AVG": AVG,
-        "OBP": OBP,
-        "SLG": SLG,
-        "OPS": OPS,
-        "K%": Kp,
-        "BB%": BBp,
+        "AB": ab,
+        "H": h,
+        "BB": bb,
+        "HBP": hbp,
+        "SF": sf,
+        "SO": so,
+        "PA": pa,
+        "TB": tb,
+        "AVG": avg,
+        "OBP": obp,
+        "SLG": slg,
+        "OPS": ops,
+        "K%": kp,
+        "BB%": bbp,
     }
 
 
@@ -267,36 +271,36 @@ def team_pitching_totals(pit_df: pd.DataFrame | None) -> dict:
         }
 
     if "IP_TRUE" in pit_df.columns:
-        IP = float(pd.to_numeric(pit_df["IP_TRUE"], errors="coerce").fillna(0).sum())
+        ip = float(pd.to_numeric(pit_df["IP_TRUE"], errors="coerce").fillna(0).sum())
     else:
-        IP = float(pd.to_numeric(pit_df.get("IP", 0), errors="coerce").fillna(0).sum())
+        ip = float(pd.to_numeric(pit_df.get("IP", 0), errors="coerce").fillna(0).sum())
 
-    BF = sum_col(pit_df, "BF")
-    H = sum_col(pit_df, "H")
-    BB = sum_col(pit_df, "BB")
-    SO = sum_col(pit_df, "SO")
-    HR = sum_col(pit_df, "HR")
-    ER = sum_col(pit_df, "ER")
+    bf = sum_col(pit_df, "BF")
+    h = sum_col(pit_df, "H")
+    bb = sum_col(pit_df, "BB")
+    so = sum_col(pit_df, "SO")
+    hr = sum_col(pit_df, "HR")
+    er = sum_col(pit_df, "ER")
 
-    ERA = (9.0 * ER / IP) if IP > 0 else 0.0
-    WHIP = ((H + BB) / IP) if IP > 0 else 0.0
-    KBB = (SO / BB) if BB > 0 else float("inf") if SO > 0 else 0.0
-    BBINN = (BB / IP) if IP > 0 else 0.0
-    KBF = (SO / BF) if BF > 0 else 0.0
+    era = (9.0 * er / ip) if ip > 0 else 0.0
+    whip = ((h + bb) / ip) if ip > 0 else 0.0
+    kbb = (so / bb) if bb > 0 else (float("inf") if so > 0 else 0.0)
+    bbi = (bb / ip) if ip > 0 else 0.0
+    kbf = (so / bf) if bf > 0 else 0.0
 
     return {
-        "IP": IP,
-        "BF": BF,
-        "H": H,
-        "BB": BB,
-        "SO": SO,
-        "HR": HR,
-        "ER": ER,
-        "ERA": ERA,
-        "WHIP": WHIP,
-        "K/BB": KBB,
-        "BB/INN": BBINN,
-        "K/BF": KBF,
+        "IP": ip,
+        "BF": bf,
+        "H": h,
+        "BB": bb,
+        "SO": so,
+        "HR": hr,
+        "ER": er,
+        "ERA": era,
+        "WHIP": whip,
+        "K/BB": kbb,
+        "BB/INN": bbi,
+        "K/BF": kbf,
     }
 
 
@@ -312,6 +316,7 @@ def load_player_media(path: str = MEDIA_CSV) -> pd.DataFrame:
         if "PLAYER" in mdf.columns:
             mdf["PLAYER"] = mdf["PLAYER"].astype(str).str.strip()
         return mdf
+
     return pd.DataFrame(
         columns=[
             "PLAYER",
@@ -327,9 +332,11 @@ def load_player_media(path: str = MEDIA_CSV) -> pd.DataFrame:
 def media_row(media_df: pd.DataFrame, player: str) -> dict:
     if media_df is None or media_df.empty or "PLAYER" not in media_df.columns:
         return {}
+
     m = media_df[media_df["PLAYER"].astype(str) == str(player)]
     if m.empty:
         return {}
+
     row = m.iloc[0].to_dict()
     return {k: ("" if pd.isna(v) else str(v)) for k, v in row.items()}
 
@@ -362,7 +369,6 @@ with st.sidebar:
 
     st.caption("Upload batting / pitching / fielding CSVs (season totals).")
 
-
 # ============================================================
 # LOAD DATA
 # ============================================================
@@ -373,6 +379,7 @@ else:
     bat_file = st.file_uploader("Batting CSV", type=["csv"], key="bat")
     pit_file = st.file_uploader("Pitching CSV", type=["csv"], key="pit")
     fld_file = st.file_uploader("Fielding CSV", type=["csv"], key="fld")
+
     bat, pit, fld = load_dataset(
         mode="upload",
         batting_file=bat_file,
@@ -437,7 +444,6 @@ if page == "Team Overview":
     c2[2].metric("Staff BB/INN", fmt_no0(staff_bbi, 2) if staff_bbi is not None else "—")
     c2[3].metric("Staff ERA", fmt_no0(staff_era, 2) if staff_era is not None else "—")
 
-    # NOTE: This is numeric innings (outs-aware). Keep caption clean (no "IP shown as...")
     st.caption(
         f"Pitching totals used — IP: {fmt_no0(pit_tot['IP'], 1)} | H: {int(pit_tot['H'])} | "
         f"BB: {int(pit_tot['BB'])} | SO: {int(pit_tot['SO'])} | ER: {int(pit_tot['ER'])}"
@@ -471,64 +477,61 @@ if page == "Team Overview":
                     st.dataframe(df_for_display(_format_bat(df)), use_container_width=True)
 
     with right:
-    st.markdown("### Pitching Leaders")
+        st.markdown("### Pitching leaders")
 
-    if pit_m is None or pit_m.empty:
-        st.info("Load pitching to see leaders.")
-    else:
-        pit_show = pit_m.copy()
-
-        # ---- Filter pitchers with innings > 0 using outs-aware IP_TRUE if present ----
-        if "IP_TRUE" in pit_show.columns:
-            pit_show["_IP_TRUE_NUM"] = pd.to_numeric(pit_show["IP_TRUE"], errors="coerce").fillna(0)
-            pit_show = pit_show[pit_show["_IP_TRUE_NUM"] > 0].copy()
+        if pit_m is None or pit_m.empty:
+            st.info("Load pitching to see leaders.")
         else:
-            # fallback if somehow IP_TRUE isn't present
-            pit_show["_IP_NUM"] = pd.to_numeric(pit_show.get("IP", 0), errors="coerce").fillna(0)
-            pit_show = pit_show[pit_show["_IP_NUM"] > 0].copy()
+            pit_show = pit_m.copy()
 
-        # ---- HARD DROP: never allow helper/legacy cols in tables ----
-        pit_show = pit_show.drop(
-            columns=[c for c in ["IP_DISPLAY", "IP_TRUE", "_IP_TRUE_NUM", "_IP_NUM"] if c in pit_show.columns],
-            errors="ignore",
-        )
+            # Filter to pitchers with innings > 0 (outs-aware if present)
+            if "IP_TRUE" in pit_show.columns:
+                ip_true = pd.to_numeric(pit_show["IP_TRUE"], errors="coerce").fillna(0)
+                pit_show = pit_show[ip_true > 0].copy()
+            else:
+                ip_num = pd.to_numeric(pit_show.get("IP", 0), errors="coerce").fillna(0)
+                pit_show = pit_show[ip_num > 0].copy()
 
-        if pit_show.empty:
-            st.info("No pitchers with IP > 0 found in this dataset.")
-        else:
-            tabs = st.tabs(["WHIP (low)", "K/BB", "K/BF", "BB/INN (low)", "ERA (low)"])
-            dec = {"WHIP": 2, "K/BB": 2, "K/BF": 3, "BB/INN": 2, "ERA": 2}
+            # ✅ Never show helper/legacy columns
+            pit_show = pit_show.drop(columns=["IP_DISPLAY", "IP_TRUE", "IP_TRUE_NUM", "IP_NUM"], errors="ignore")
 
-            def _format_pit(df: pd.DataFrame) -> pd.DataFrame:
-                out = df.copy()
-                for col, d in dec.items():
-                    if col in out.columns:
-                        out[col] = pd.to_numeric(out[col], errors="coerce").apply(lambda v: fmt_no0(v, d))
-                # IP should already be baseball notation string from utils
-                if "IP" in out.columns:
-                    out["IP"] = out["IP"].astype(str)
-                return out
+            if pit_show.empty:
+                st.info("No pitchers with IP > 0 found in this dataset.")
+            else:
+                tabs = st.tabs(["WHIP (low)", "K/BB", "K/BF", "BB/INN (low)", "ERA (low)"])
+                dec = {"WHIP": 2, "K/BB": 2, "K/BF": 3, "BB/INN": 2, "ERA": 2}
 
-            with tabs[0]:
-                df = top_table(pit_show, "WHIP", n=12, ascending=True)
-                st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+                def _format_pit(df: pd.DataFrame) -> pd.DataFrame:
+                    out = df.copy()
+                    for col, d in dec.items():
+                        if col in out.columns:
+                            out[col] = pd.to_numeric(out[col], errors="coerce").apply(lambda v: fmt_no0(v, d))
+                    if "IP" in out.columns:
+                        out["IP"] = out["IP"].astype(str)
+                    return out
 
-            with tabs[1]:
-                df = top_table(pit_show, "K/BB", n=12, ascending=False)
-                st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+                with tabs[0]:
+                    df = top_table(pit_show, "WHIP", n=12, ascending=True)
+                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
 
-            with tabs[2]:
-                df = top_table(pit_show, "K/BF", n=12, ascending=False)
-                st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+                with tabs[1]:
+                    df = top_table(pit_show, "K/BB", n=12, ascending=False)
+                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
 
-            with tabs[3]:
-                df = top_table(pit_show, "BB/INN", n=12, ascending=True)
-                st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+                with tabs[2]:
+                    df = top_table(pit_show, "K/BF", n=12, ascending=False)
+                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
 
-            with tabs[4]:
-                df = top_table(pit_show, "ERA", n=12, ascending=True)
-                st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
-                
+                with tabs[3]:
+                    df = top_table(pit_show, "BB/INN", n=12, ascending=True)
+                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+
+                with tabs[4]:
+                    df = top_table(pit_show, "ERA", n=12, ascending=True)
+                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+
+    st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+
     st.markdown("### Defense snapshot")
     if fld_m is None or fld_m.empty:
         st.info("Load fielding to see defense.")
@@ -632,8 +635,10 @@ elif page == "Player Profiles":
         st.warning("No players found. Load at least one CSV.")
     else:
         top_row = st.columns([3, 2, 5])
+
         with top_row[0]:
             player_a = st.selectbox("Player A", players, index=0)
+
         with top_row[1]:
             compare = st.toggle("Compare Players", value=False)
 
@@ -699,6 +704,7 @@ elif page == "Player Profiles":
                     st.caption("No fielding data.")
                 else:
                     st.metric("FPCT", fmt_no0(pfld.get("FPCT", 0), 3))
+
                     r1 = st.columns(2)
                     r1[0].metric("TC", str(int_safe(pfld.get("TC", 0))))
                     r1[1].metric("E", str(int_safe(pfld.get("E", 0))))
@@ -709,10 +715,10 @@ elif page == "Player Profiles":
                     st.metric("DP", str(int_safe(pfld.get("DP", 0))))
 
         if compare and player_b:
-            l, r = st.columns(2)
-            with l:
+            lcol, rcol = st.columns(2)
+            with lcol:
                 render_profile(player_a)
-            with r:
+            with rcol:
                 render_profile(player_b)
         else:
             render_profile(player_a)
@@ -754,11 +760,11 @@ elif page == "Exports":
         st.info("No batting table to export.")
 
     if pit_m is not None and not pit_m.empty:
-        # ✅ Hide IP_TRUE from export by default (keeps export clean)
         pit_export = pit_m.copy()
-        for internal in ["IP_TRUE", "IP_DISPLAY", "IP_TRUE_NUM", "IP_NUM"]:
-            if internal in pit_export.columns:
-                pit_export = pit_export.drop(columns=[internal])
+        pit_export = pit_export.drop(
+            columns=["IP_TRUE", "IP_DISPLAY", "IP_TRUE_NUM", "IP_NUM"],
+            errors="ignore",
+        )
 
         st.download_button(
             "Download pitching (with computed metrics) CSV",

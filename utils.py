@@ -253,15 +253,42 @@ def compute_pitching_metrics(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     df = df.copy()
-    for col in ["IP","BF","H","R","ER","BB","SO","HR","#P","HBP","WP"]:
+
+    # Ensure columns exist
+    for col in ["IP", "BF", "H", "R", "ER", "BB", "SO", "HR", "#P", "HBP", "WP"]:
         if col not in df.columns:
             df[col] = 0
-    df = _coerce_numeric(df, ["IP","BF","H","R","ER","BB","SO","HR","#P","HBP","WP"])
 
-    df["ERA"] = ((df["ER"] * 9) / df["IP"].replace(0, pd.NA)).fillna(0)
-    df["WHIP"] = ((df["BB"] + df["H"]) / df["IP"].replace(0, pd.NA)).fillna(0)
-    df["K/BB"] = (df["SO"] / df["BB"].replace(0, pd.NA)).fillna(df["SO"])  # if BB=0, show SO as "infinite-ish"
-    df["BB/INN"] = (df["BB"] / df["IP"].replace(0, pd.NA)).fillna(0)
+    # Coerce numeric for everything EXCEPT IP (we handle IP separately)
+    df = _coerce_numeric(df, ["BF", "H", "R", "ER", "BB", "SO", "HR", "#P", "HBP", "WP"])
+
+    # --- IP handling (baseball notation aware) ---
+    # Convert IP value to outs (supports 12.1 / 12.2)
+    outs = df["IP"].apply(ip_to_outs)
+
+    # True innings as decimal (outs/3) for math
+    df["IP_TRUE"] = outs.apply(outs_to_ip)
+
+    # Overwrite display IP to baseball-style string: 12.0 / 12.1 / 12.2
+    def outs_to_baseball_ip_str(o: int) -> str:
+        try:
+            o = int(o)
+        except Exception:
+            return "0.0"
+        if o <= 0:
+            return "0.0"
+        whole = o // 3
+        rem = o % 3
+        return f"{whole}.{rem}"
+
+    df["IP"] = outs.apply(outs_to_baseball_ip_str)
+
+    denom = df["IP_TRUE"].replace(0, pd.NA)
+
+    df["ERA"] = ((df["ER"] * 9) / denom).fillna(0)
+    df["WHIP"] = ((df["BB"] + df["H"]) / denom).fillna(0)
+    df["K/BB"] = (df["SO"] / df["BB"].replace(0, pd.NA)).fillna(df["SO"])
+    df["BB/INN"] = (df["BB"] / denom).fillna(0)
     df["K/BF"] = (df["SO"] / df["BF"].replace(0, pd.NA)).fillna(0)
 
     return df
@@ -280,32 +307,15 @@ def compute_fielding_metrics(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def top_table(df: pd.DataFrame, metric: str, n: int = 10, ascending: bool = False) -> pd.DataFrame:
-    """
-    Return a small leaderboard table.
-
-    - Only returns a controlled list of columns (so helper fields like IP_TRUE/IP_DISPLAY never leak).
-    - Drops common helper/legacy columns if present.
-    """
-    if df is None or df.empty or metric not in df.columns:
-        return pd.DataFrame()
-
-    # Hard-drop helper columns if they exist (defensive)
-    safe = df.drop(
-        columns=["IP_DISPLAY", "IP_TRUE", "IP_TRUE_NUM", "IP_NUM"],
-        errors="ignore",
-    ).copy()
-
     cols = ["PLAYER", metric]
-    for extra in [
-        "AVG", "PA", "AB", "H", "HR", "BB", "SO",
-        "OPS", "OBP", "SLG",
-        "IP", "BF", "ER", "WHIP",
-        "TC", "E", "FPCT",
-    ]:
-        if extra in safe.columns and extra not in cols:
+    for extra in ["AVG", "PA", "AB", "H", "HR", "BB", "SO",
+              "OPS", "OBP", "SLG",
+              "IP", "BF", "ER", "WHIP",
+              "TC", "E", "FPCT"]:
+        if extra in df.columns and extra not in cols:
             cols.append(extra)
-
-    out = safe.sort_values(metric, ascending=ascending).head(n)
+    out = df.copy()
+    out = out.sort_values(metric, ascending=ascending).head(n)
     return out[cols]
 
 def lineup_suggestions(bat_df: pd.DataFrame, min_pa: int = 10) -> pd.DataFrame:

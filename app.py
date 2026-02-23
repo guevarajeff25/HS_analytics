@@ -383,42 +383,118 @@ def recruiting_grades(player_name: str, bat_m: pd.DataFrame | None, pit_m: pd.Da
 
 
 # ============================================================
-# OPTIONAL MEDIA (V2-ready, NO submission form yet)
+# PLAYER MEDIA + BIO (FULL SCHEMA, backward compatible)
 # ============================================================
 MEDIA_CSV = "player_media.csv"
 
+# Accept both schemas (old/full + new/simple) by mapping aliases -> canonical names.
+COLUMN_ALIASES = {
+    # headshot
+    "PHOTO_URL": "HEADSHOT_URL",
+    "HEADSHOT": "HEADSHOT_URL",
+    "HEADSHOT": "HEADSHOT_URL",
+
+    # spray charts
+    "SPRAY_CHART_URL": "SPRAY_BATTING_URL",        # older single-spray becomes batting by default
+    "SPRAY_URL": "SPRAY_BATTING_URL",
+    "SPRAY_HITTING_URL": "SPRAY_BATTING_URL",
+    "SPRAY_PITCH_URL": "SPRAY_PITCHING_URL",
+
+    # video
+    "VIDEO_URL": "VIDEO_URL_1",
+    "VIDEO1_URL": "VIDEO_URL_1",
+    "VIDEO2_URL": "VIDEO_URL_2",
+}
+
+# Canonical columns the app will use everywhere
+CANONICAL_MEDIA_COLS = [
+    "PLAYER",
+    "HEADSHOT_URL",
+    "SPRAY_BATTING_URL",
+    "SPRAY_PITCHING_URL",
+    "VIDEO_URL_1",
+    "VIDEO_URL_2",
+]
+
+# Full bio columns (optional, shown on Recruiting Profile)
+BIO_COLS = [
+    "NUMBER",
+    "POSITION",
+    "HEIGHT",
+    "WEIGHT",
+    "BATS",
+    "THROWS",
+    "GRAD_YEAR",
+    "HOMETOWN",
+    "PLAYER_EVAL_NOTES",
+]
+
 
 def load_player_media(path: str = MEDIA_CSV) -> pd.DataFrame:
-    if os.path.exists(path):
-        mdf = pd.read_csv(path)
-        if "PLAYER" in mdf.columns:
-            mdf["PLAYER"] = mdf["PLAYER"].astype(str).str.strip()
-        return mdf
-    return pd.DataFrame(
-        columns=[
-            "PLAYER",
-            "HEADSHOT_URL",
-            "SPRAY_BATTING_URL",
-            "SPRAY_PITCHING_URL",
-            "VIDEO_URL_1",
-            "VIDEO_URL_2",
-        ]
-    )
+    """
+    Loads player_media.csv and normalizes columns so BOTH schemas work:
+      - Full bio schema (your CSV): PHOTO_URL, SPRAY_CHART_URL, VIDEO_URL, etc.
+      - Simple schema: HEADSHOT_URL, SPRAY_BATTING_URL, VIDEO_URL_1, etc.
+    """
+    if not os.path.exists(path):
+        # Empty template with both canonical + bio columns
+        return pd.DataFrame(columns=CANONICAL_MEDIA_COLS + BIO_COLS)
+
+    mdf = pd.read_csv(path)
+
+    # Normalize PLAYER
+    if "PLAYER" in mdf.columns:
+        mdf["PLAYER"] = mdf["PLAYER"].astype(str).str.strip()
+
+    # Apply alias mapping (only if alias exists and canonical does not)
+    for src, dst in COLUMN_ALIASES.items():
+        if src in mdf.columns and dst not in mdf.columns:
+            mdf[dst] = mdf[src]
+
+    # Ensure canonical columns exist
+    for c in CANONICAL_MEDIA_COLS:
+        if c not in mdf.columns:
+            mdf[c] = ""
+
+    # Ensure bio cols exist (optional)
+    for c in BIO_COLS:
+        if c not in mdf.columns:
+            mdf[c] = ""
+
+    return mdf
 
 
 def media_row(media_df: pd.DataFrame, player: str) -> dict:
     if media_df is None or media_df.empty or "PLAYER" not in media_df.columns:
         return {}
-    m = media_df[media_df["PLAYER"].astype(str) == str(player)]
+    m = media_df[media_df["PLAYER"].astype(str) == str(player).strip()]
     if m.empty:
         return {}
     row = m.iloc[0].to_dict()
-    return {k: ("" if pd.isna(v) else str(v)) for k, v in row.items()}
+    return {k: ("" if pd.isna(v) else str(v).strip()) for k, v in row.items()}
 
 
 def is_url(s: str) -> bool:
     return isinstance(s, str) and s.strip().lower().startswith(("http://", "https://"))
 
+
+def media_exists_local(path: str) -> bool:
+    """
+    Support local repo paths like:
+      assets/headshots/jett.jpg
+    """
+    if not isinstance(path, str) or not path.strip():
+        return False
+    return os.path.exists(path)
+
+
+def show_image_or_hint(label: str, value: str, hint: str):
+    if is_url(value):
+        st.image(value, use_container_width=True)
+    elif media_exists_local(value):
+        st.image(value, use_container_width=True)
+    else:
+        st.caption(f"{label}: {hint}")
 
 # ============================================================
 # ONE-PAGER PDF EXPORT (real PDF bytes)
@@ -750,20 +826,42 @@ elif page == "Recruiting Profile":
         player = st.selectbox("Select player", players, index=0)
         m = media_row(media_df, player)
 
-        top = st.columns([1, 2, 3])
+        # ---- Top layout ----
+        top = st.columns([1.2, 1.6, 3.2])
 
         with top[0]:
             headshot = m.get("HEADSHOT_URL", "")
-            if is_url(headshot):
-                st.image(headshot, use_container_width=True)
-            else:
-                st.caption("Headshot: add HEADSHOT_URL in player_media.csv")
+            show_image_or_hint(
+                "Headshot",
+                headshot,
+                "Add PHOTO_URL or HEADSHOT_URL (URL or local path like assets/headshots/jett.jpg)",
+            )
 
         with top[1]:
             st.markdown(f"### {player}")
-            st.caption("Recruiting-facing snapshot • Metrics • Spray • Video")
+
+            # Bio pills (only show if present)
+            bio_lines = []
+            if m.get("NUMBER"):
+                bio_lines.append(f"**#{m['NUMBER']}**")
+            if m.get("POSITION"):
+                bio_lines.append(f"**Pos:** {m['POSITION']}")
+            if m.get("BATS") or m.get("THROWS"):
+                bio_lines.append(f"**B/T:** {m.get('BATS','')} / {m.get('THROWS','')}".strip(" /"))
+            if m.get("HEIGHT") or m.get("WEIGHT"):
+                bio_lines.append(f"**HT/WT:** {m.get('HEIGHT','')} / {m.get('WEIGHT','')}".strip(" /"))
+            if m.get("GRAD_YEAR"):
+                bio_lines.append(f"**Grad:** {m['GRAD_YEAR']}")
+            if m.get("HOMETOWN"):
+                bio_lines.append(f"**Hometown:** {m['HOMETOWN']}")
+
+            if bio_lines:
+                st.write(" • ".join(bio_lines))
+            else:
+                st.caption("Add bio fields in player_media.csv (POSITION, BATS/THROWS, HT/WT, etc.)")
 
         with top[2]:
+            # Stats snapshot from computed metrics (already in your app)
             pbat = player_row(bat_m, player)
             ppit = player_row(pit_m, player)
 
@@ -783,6 +881,7 @@ elif page == "Recruiting Profile":
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
+        # ---- Media section ----
         left, right = st.columns(2)
 
         with left:
@@ -791,17 +890,20 @@ elif page == "Recruiting Profile":
 
             with tab1:
                 sb = m.get("SPRAY_BATTING_URL", "")
-                if is_url(sb):
-                    st.image(sb, use_container_width=True)
-                else:
-                    st.caption("Add SPRAY_BATTING_URL in player_media.csv")
+                # If they only have SPRAY_CHART_URL, our alias mapping puts it into SPRAY_BATTING_URL
+                show_image_or_hint(
+                    "Batting spray",
+                    sb,
+                    "Add SPRAY_CHART_URL or SPRAY_BATTING_URL (URL or local path like assets/spray/jett_batting.png)",
+                )
 
             with tab2:
                 sp = m.get("SPRAY_PITCHING_URL", "")
-                if is_url(sp):
-                    st.image(sp, use_container_width=True)
-                else:
-                    st.caption("Add SPRAY_PITCHING_URL in player_media.csv")
+                show_image_or_hint(
+                    "Pitching spray",
+                    sp,
+                    "Add SPRAY_PITCHING_URL (optional)",
+                )
 
         with right:
             st.markdown("### Video")
@@ -810,31 +912,22 @@ elif page == "Recruiting Profile":
 
             if is_url(v1):
                 st.video(v1)
+            elif v1.strip():
+                st.caption("VIDEO_URL_1 is set but not a valid URL. Use https:// (YouTube unlisted is best).")
             else:
-                st.caption("Add VIDEO_URL_1 in player_media.csv")
+                st.caption("Add VIDEO_URL or VIDEO_URL_1 (YouTube/Vimeo link recommended).")
 
             if is_url(v2):
                 st.video(v2)
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
-        st.markdown("### Scouting Grades (20–80) + Percentiles")
-        grades = recruiting_grades(player, bat_m, pit_m, fld_m)
-        if not grades:
-            st.info("Not enough data to compute scouting grades.")
-        else:
-            for label, val_str, pct, grade in grades[:12]:
-                row = st.columns([2, 2, 5, 2])
-                row[0].markdown(f"**{label}**")
-                row[1].markdown(val_str)
-                row[2].progress(max(0.0, min(1.0, float(pct))))
-                row[3].markdown(f"**{grade}**")
-
-        st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
-
         st.markdown("### Player Evaluation Notes")
-        st.caption("Notes are currently placeholder (V2 templates later).")
-        st.write("- Keep approach stable and look for marginal gains (BB% up, K% down).")
+        notes = m.get("PLAYER_EVAL_NOTES", "").strip()
+        if notes:
+            st.write(notes)
+        else:
+            st.caption("Add PLAYER_EVAL_NOTES in player_media.csv (optional).")
 
 # ============================================================
 # PLAYER PROFILES

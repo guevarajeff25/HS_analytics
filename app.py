@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 
@@ -28,6 +29,7 @@ st.markdown(
 /* Layout */
 .block-container {{ padding-top: 1.0rem; padding-bottom: 2rem; }}
 h1, h2, h3 {{ letter-spacing: -0.02em; }}
+
 /* Sidebar */
 section[data-testid="stSidebar"] {{
   border-right: 3px solid {HERITAGE_NAVY};
@@ -35,6 +37,7 @@ section[data-testid="stSidebar"] {{
 section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {{
   color: {HERITAGE_NAVY};
 }}
+
 /* Metric cards */
 [data-testid="stMetric"] {{
   background: white;
@@ -50,6 +53,7 @@ section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {{
 [data-testid="stMetricValue"] div {{
   font-weight: 950;
 }}
+
 /* Section title helper */
 .section-title {{
   font-size: 1.05rem;
@@ -65,8 +69,10 @@ section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {{
   border-top: 1px solid rgba(49,51,63,.10);
   margin: 1rem 0;
 }}
+
 /* DataFrames */
 [data-testid="stDataFrame"] {{ border-radius: 14px; overflow: hidden; }}
+
 /* Buttons */
 .stDownloadButton button, .stButton button {{
   border-radius: 12px !important;
@@ -75,6 +81,7 @@ section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {{
 .stDownloadButton button:hover, .stButton button:hover {{
   border-color: {HERITAGE_NAVY} !important;
 }}
+
 /* Pills */
 .pill {{
   display:inline-block;
@@ -132,19 +139,8 @@ def int_safe(x) -> int:
         return 0
 
 
-def num_safe(series_or_val, default=0.0) -> float:
-    try:
-        if series_or_val is None:
-            return float(default)
-        v = float(series_or_val)
-        if pd.isna(v):
-            return float(default)
-        return v
-    except Exception:
-        return float(default)
-
-
 def ensure_avg(bat_m: pd.DataFrame | None) -> pd.DataFrame | None:
+    """Ensure AVG exists on the computed batting metrics table."""
     if bat_m is None or bat_m.empty:
         return bat_m
     if "AVG" in bat_m.columns:
@@ -255,8 +251,20 @@ def team_batting_totals(bat_df: pd.DataFrame | None) -> dict:
     BBp = (BB / PA) if PA > 0 else 0.0
 
     return {
-        "AB": AB, "H": H, "BB": BB, "HBP": HBP, "SF": SF, "SO": SO, "PA": PA, "TB": TB,
-        "AVG": AVG, "OBP": OBP, "SLG": SLG, "OPS": OPS, "K%": Kp, "BB%": BBp
+        "AB": AB,
+        "H": H,
+        "BB": BB,
+        "HBP": HBP,
+        "SF": SF,
+        "SO": SO,
+        "PA": PA,
+        "TB": TB,
+        "AVG": AVG,
+        "OBP": OBP,
+        "SLG": SLG,
+        "OPS": OPS,
+        "K%": Kp,
+        "BB%": BBp,
     }
 
 
@@ -272,8 +280,18 @@ def team_pitching_totals(pit_df: pd.DataFrame | None) -> dict:
     """
     if pit_df is None or pit_df.empty:
         return {
-            "IP": 0.0, "BF": 0.0, "H": 0.0, "BB": 0.0, "SO": 0.0, "HR": 0.0, "ER": 0.0,
-            "ERA": 0.0, "WHIP": 0.0, "K/BB": 0.0, "BB/INN": 0.0, "K/BF": 0.0
+            "IP": 0.0,
+            "BF": 0.0,
+            "H": 0.0,
+            "BB": 0.0,
+            "SO": 0.0,
+            "HR": 0.0,
+            "ER": 0.0,
+            "ERA": 0.0,
+            "WHIP": 0.0,
+            "K/BB": 0.0,
+            "BB/INN": 0.0,
+            "K/BF": 0.0,
         }
 
     # Sum innings via outs conversion
@@ -297,8 +315,18 @@ def team_pitching_totals(pit_df: pd.DataFrame | None) -> dict:
     KBF = (SO / BF) if BF > 0 else 0.0
 
     return {
-        "IP": IP, "BF": BF, "H": H, "BB": BB, "SO": SO, "HR": HR, "ER": ER,
-        "ERA": ERA, "WHIP": WHIP, "K/BB": KBB, "BB/INN": BBINN, "K/BF": KBF
+        "IP": IP,
+        "BF": BF,
+        "H": H,
+        "BB": BB,
+        "SO": SO,
+        "HR": HR,
+        "ER": ER,
+        "ERA": ERA,
+        "WHIP": WHIP,
+        "K/BB": KBB,
+        "BB/INN": BBINN,
+        "K/BF": KBF,
     }
 
 
@@ -321,16 +349,15 @@ def percentile(series: pd.Series, value: float, higher_is_better: bool = True) -
     if s.empty:
         return 0.5
     v = float(value)
-    pct = (s.rank(pct=True).loc[s.index]).mean()  # not used directly
-    # Use empirical CDF:
-    p = (s <= v).mean()
+    p = (s <= v).mean()  # empirical CDF
     if higher_is_better:
         return float(p)
     return float(1.0 - p)
 
 
 def build_coach_notes(player: str, bat_m, pit_m) -> list[str]:
-    notes = []
+    """Actionable notes; renamed in UI to Player Evaluation Notes."""
+    notes: list[str] = []
 
     pbat = player_row(bat_m, player)
     if pbat is not None:
@@ -370,7 +397,7 @@ def build_one_pager_markdown(player: str, bat_m, pit_m, fld_m) -> str:
     pfld = player_row(fld_m, player)
     notes = build_coach_notes(player, bat_m, pit_m)
 
-    lines = []
+    lines: list[str] = []
     lines.append(f"# D1 Recruiting One-Pager — {player}")
     lines.append("")
     lines.append("## Tools Snapshot")
@@ -415,7 +442,7 @@ def build_one_pager_markdown(player: str, bat_m, pit_m, fld_m) -> str:
         lines.append(f"- DP: {int_safe(pfld.get('DP', 0))}")
 
     lines.append("")
-    lines.append("## Coach Notes")
+    lines.append("## Player Evaluation Notes")
     for n in notes:
         lines.append(f"- {n}")
 
@@ -436,6 +463,52 @@ def format_leaderboard(df: pd.DataFrame, decimals_map: dict) -> pd.DataFrame:
     return out
 
 
+def df_for_display(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Streamlit's st.dataframe will ignore string formatting in some cases if the df stays numeric.
+    Force the relevant columns to string BEFORE passing to st.dataframe.
+    """
+    return df.astype(str)
+
+
+# ============================================================
+# OPTIONAL MEDIA (V2-ready, NO submission form yet)
+# ============================================================
+MEDIA_CSV = "player_media.csv"
+
+
+def load_player_media(path: str = MEDIA_CSV) -> pd.DataFrame:
+    if os.path.exists(path):
+        mdf = pd.read_csv(path)
+        if "PLAYER" in mdf.columns:
+            mdf["PLAYER"] = mdf["PLAYER"].astype(str).str.strip()
+        return mdf
+    return pd.DataFrame(
+        columns=[
+            "PLAYER",
+            "HEADSHOT_URL",
+            "SPRAY_BATTING_URL",
+            "SPRAY_PITCHING_URL",
+            "VIDEO_URL_1",
+            "VIDEO_URL_2",
+        ]
+    )
+
+
+def media_row(media_df: pd.DataFrame, player: str) -> dict:
+    if media_df is None or media_df.empty or "PLAYER" not in media_df.columns:
+        return {}
+    m = media_df[media_df["PLAYER"].astype(str) == str(player)]
+    if m.empty:
+        return {}
+    row = m.iloc[0].to_dict()
+    return {k: ("" if pd.isna(v) else str(v)) for k, v in row.items()}
+
+
+def is_url(s: str) -> bool:
+    return isinstance(s, str) and s.strip().lower().startswith(("http://", "https://"))
+
+
 # ============================================================
 # SIDEBAR
 # ============================================================
@@ -446,7 +519,11 @@ with st.sidebar:
     st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
     st.header("Navigation")
-    page = st.radio("Go to", ["Team Overview", "Player Profiles", "Lineup Builder", "Exports"], index=0)
+    page = st.radio(
+        "Go to",
+        ["Team Overview", "Recruiting Profile", "Player Profiles", "Lineup Builder", "Exports"],
+        index=0,
+    )
 
     st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
@@ -477,13 +554,16 @@ fld_m = compute_fielding_metrics(fld) if fld is not None else None
 
 players = get_players(bat_m, pit_m, fld_m)
 
+media_df = load_player_media()
+
 # ============================================================
 # HEADER
 # ============================================================
 st.title("HS Baseball Recruiting Dashboard")
 st.markdown(
-    f"""
+    """
 <span class="pill">D1-style profile view</span>
+<span class="pill">Recruiting Profile</span>
 <span class="pill">Player compare</span>
 <span class="pill">One-pager export</span>
 <span class="pill">True team totals</span>
@@ -491,7 +571,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.caption("Team totals are computed from summed stat components (not medians / not averaging player rate stats).")
-
 
 # ============================================================
 # TEAM OVERVIEW (TRUE TOTALS)
@@ -510,7 +589,8 @@ if page == "Team Overview":
     c[4].metric("Team K%", fmt_pct(bat_tot["K%"], 1))
 
     st.caption(
-        f"Batting totals used — AB: {int(bat_tot['AB'])} | H: {int(bat_tot['H'])} | BB: {int(bat_tot['BB'])} | SO: {int(bat_tot['SO'])} | PA: {int(bat_tot['PA'])}"
+        f"Batting totals used — AB: {int(bat_tot['AB'])} | H: {int(bat_tot['H'])} | "
+        f"BB: {int(bat_tot['BB'])} | SO: {int(bat_tot['SO'])} | PA: {int(bat_tot['PA'])}"
     )
 
     c2 = st.columns(4)
@@ -525,7 +605,8 @@ if page == "Team Overview":
     c2[3].metric("Staff ERA", fmt_no0(staff_era, 2) if staff_era is not None else "—")
 
     st.caption(
-        f"Pitching totals used — IP: {fmt_no0(pit_tot['IP'], 1)} | H: {int(pit_tot['H'])} | BB: {int(pit_tot['BB'])} | SO: {int(pit_tot['SO'])} | ER: {int(pit_tot['ER'])}"
+        f"Pitching totals used — IP: {fmt_no0(pit_tot['IP'], 1)} | H: {int(pit_tot['H'])} | "
+        f"BB: {int(pit_tot['BB'])} | SO: {int(pit_tot['SO'])} | ER: {int(pit_tot['ER'])}"
     )
 
     st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
@@ -537,14 +618,16 @@ if page == "Team Overview":
         if bat_m is None or bat_m.empty:
             st.info("Load batting to see leaders.")
         else:
+            # AVG added as first-class tab (and ensured above)
             tabs = st.tabs(["OPS", "AVG", "OBP", "SLG", "BB%", "K%", "XBH"])
             metrics = ["OPS", "AVG", "OBP", "SLG", "BB%", "K%", "XBH"]
             decimals = {"OPS": 3, "AVG": 3, "OBP": 3, "SLG": 3, "BB%": 3, "K%": 3}
+
             for t, m in zip(tabs, metrics):
                 with t:
                     df = top_table(bat_m, m, n=12, ascending=False)
                     df_show = format_leaderboard(df, decimals_map=decimals)
-                    st.dataframe(df_show, use_container_width=True)
+                    st.dataframe(df_for_display(df_show), use_container_width=True)
 
     with right:
         st.markdown("### Pitching leaders")
@@ -563,19 +646,19 @@ if page == "Team Overview":
 
                 with tabs[0]:
                     df = top_table(pit_show, "WHIP", n=12, ascending=True)
-                    st.dataframe(format_leaderboard(df, dec), use_container_width=True)
+                    st.dataframe(df_for_display(format_leaderboard(df, dec)), use_container_width=True)
                 with tabs[1]:
                     df = top_table(pit_show, "K/BB", n=12, ascending=False)
-                    st.dataframe(format_leaderboard(df, dec), use_container_width=True)
+                    st.dataframe(df_for_display(format_leaderboard(df, dec)), use_container_width=True)
                 with tabs[2]:
                     df = top_table(pit_show, "K/BF", n=12, ascending=False)
-                    st.dataframe(format_leaderboard(df, dec), use_container_width=True)
+                    st.dataframe(df_for_display(format_leaderboard(df, dec)), use_container_width=True)
                 with tabs[3]:
                     df = top_table(pit_show, "BB/INN", n=12, ascending=True)
-                    st.dataframe(format_leaderboard(df, dec), use_container_width=True)
+                    st.dataframe(df_for_display(format_leaderboard(df, dec)), use_container_width=True)
                 with tabs[4]:
                     df = top_table(pit_show, "ERA", n=12, ascending=True)
-                    st.dataframe(format_leaderboard(df, dec), use_container_width=True)
+                    st.dataframe(df_for_display(format_leaderboard(df, dec)), use_container_width=True)
 
     st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
@@ -584,11 +667,93 @@ if page == "Team Overview":
         st.info("Load fielding to see defense.")
     else:
         def_table = top_table(fld_m, "FPCT", n=12, ascending=False).copy()
-        # show FPCT without leading zero
         if "FPCT" in def_table.columns:
             def_table["FPCT"] = pd.to_numeric(def_table["FPCT"], errors="coerce").apply(lambda v: fmt_no0(v, 3))
-        st.dataframe(def_table, use_container_width=True)
+        st.dataframe(df_for_display(def_table), use_container_width=True)
 
+# ============================================================
+# RECRUITING PROFILE (V2-ready: headshot + spray screenshot + videos + eval notes)
+# ============================================================
+elif page == "Recruiting Profile":
+    st.subheader("Recruiting Profile (D1 Recruiting Card)")
+
+    if not players:
+        st.warning("No players found. Load at least one CSV.")
+    else:
+        player = st.selectbox("Select player", players, index=0)
+        m = media_row(media_df, player)
+
+        top = st.columns([1, 2, 3])
+
+        with top[0]:
+            headshot = m.get("HEADSHOT_URL", "")
+            if is_url(headshot):
+                st.image(headshot, use_container_width=True)
+            else:
+                st.caption("Headshot: add HEADSHOT_URL in player_media.csv")
+
+        with top[1]:
+            st.markdown(f"### {player}")
+            st.caption("Recruiting-facing snapshot • Metrics • Spray • Video")
+
+        with top[2]:
+            pbat = player_row(bat_m, player)
+            ppit = player_row(pit_m, player)
+
+            a, b, c, d = st.columns(4)
+            if pbat is not None:
+                a.metric("AVG", fmt_no0(pbat.get("AVG", 0), 3))
+                b.metric("OBP", fmt_no0(pbat.get("OBP", 0), 3))
+                c.metric("SLG", fmt_no0(pbat.get("SLG", 0), 3))
+                d.metric("OPS", fmt_no0(pbat.get("OPS", 0), 3))
+            elif ppit is not None:
+                a.metric("ERA", fmt_no0(ppit.get("ERA", 0), 2))
+                b.metric("WHIP", fmt_no0(ppit.get("WHIP", 0), 2))
+                c.metric("K/BB", fmt_no0(ppit.get("K/BB", 0), 2))
+                d.metric("IP", fmt_no0(ppit.get("IP", 0), 1))
+            else:
+                st.info("No metrics available for this player yet.")
+
+        st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+
+        left, right = st.columns(2)
+
+        with left:
+            st.markdown("### Spray Chart (GameChanger screenshot)")
+            tab1, tab2 = st.tabs(["Batting", "Pitching"])
+
+            with tab1:
+                sb = m.get("SPRAY_BATTING_URL", "")
+                if is_url(sb):
+                    st.image(sb, use_container_width=True)
+                else:
+                    st.caption("Add SPRAY_BATTING_URL in player_media.csv")
+
+            with tab2:
+                sp = m.get("SPRAY_PITCHING_URL", "")
+                if is_url(sp):
+                    st.image(sp, use_container_width=True)
+                else:
+                    st.caption("Add SPRAY_PITCHING_URL in player_media.csv")
+
+        with right:
+            st.markdown("### Video (highlights)")
+            v1 = m.get("VIDEO_URL_1", "")
+            v2 = m.get("VIDEO_URL_2", "")
+
+            if is_url(v1):
+                st.video(v1)
+            else:
+                st.caption("Add VIDEO_URL_1 in player_media.csv")
+
+            if is_url(v2):
+                st.video(v2)
+
+        st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+
+        st.markdown("### Player Evaluation Notes")
+        notes = build_coach_notes(player, bat_m, pit_m)
+        st.write("\n".join([f"- {n}" for n in notes]))
 
 # ============================================================
 # PLAYER PROFILES (D1 style) + COMPARE
@@ -604,6 +769,7 @@ elif page == "Player Profiles":
             player_a = st.selectbox("Player A", players, index=0)
         with top_row[1]:
             compare = st.toggle("Compare Players", value=False)
+
         player_b = None
         if compare:
             with top_row[2]:
@@ -621,6 +787,7 @@ elif page == "Player Profiles":
             if pbat is not None and bat_m is not None and not bat_m.empty:
                 for label, col, hib, dec in [
                     ("OPS", "OPS", True, 3),
+                    ("AVG", "AVG", True, 3),
                     ("OBP", "OBP", True, 3),
                     ("SLG", "SLG", True, 3),
                     ("K%", "K%", False, 3),
@@ -629,7 +796,8 @@ elif page == "Player Profiles":
                     if col in bat_m.columns:
                         val = float(pbat.get(col, 0) or 0)
                         pct = percentile(bat_m[col], val, higher_is_better=hib)
-                        grades.append((label, fmt_no0(val, dec) if " %" not in label else fmt_pct(val), pct, grade_20_80(pct)))
+                        val_str = fmt_pct(val, 1) if col in ["K%", "BB%"] else fmt_no0(val, dec)
+                        grades.append((label, val_str, pct, grade_20_80(pct)))
 
             # Pitching (lower better for ERA/WHIP/BBINN)
             ppit = player_row(pit_m, player_name)
@@ -648,22 +816,22 @@ elif page == "Player Profiles":
 
             # Defense (higher better)
             pfld = player_row(fld_m, player_name)
-            if pfld is not None and fld_m is not None and not fld_m.empty:
-                if "FPCT" in fld_m.columns:
-                    val = float(pfld.get("FPCT", 0) or 0)
-                    pct = percentile(fld_m["FPCT"], val, higher_is_better=True)
-                    grades.append(("FPCT", fmt_no0(val, 3), pct, grade_20_80(pct)))
+            if pfld is not None and fld_m is not None and not fld_m.empty and "FPCT" in fld_m.columns:
+                val = float(pfld.get("FPCT", 0) or 0)
+                pct = percentile(fld_m["FPCT"], val, higher_is_better=True)
+                grades.append(("FPCT", fmt_no0(val, 3), pct, grade_20_80(pct)))
 
             return grades
 
         def render_profile(player_name: str):
             st.markdown(f"## {player_name}")
-            st.markdown('<div class="subtle">Quick scan: tools + percentiles + grades (20–80 scale).</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="subtle">Quick scan: tools + percentiles + grades (20–80 scale).</div>',
+                unsafe_allow_html=True,
+            )
 
-            # ---- TOP: Tools Snapshot ----
             c1, c2, c3 = st.columns(3)
 
-            # Hitting card
             with c1:
                 st.markdown('<div class="section-title">Hitting</div>', unsafe_allow_html=True)
                 pbat = player_row(bat_m, player_name)
@@ -687,7 +855,6 @@ elif page == "Player Profiles":
                     r4[1].metric("SB", str(int_safe(pbat.get("SB", 0))))
                     st.caption(f"PA: {int_safe(pbat.get('PA', 0))}")
 
-            # Pitching card
             with c2:
                 st.markdown('<div class="section-title">Pitching</div>', unsafe_allow_html=True)
                 ppit = player_row(pit_m, player_name)
@@ -708,7 +875,6 @@ elif page == "Player Profiles":
 
                     st.metric("HR", str(int_safe(ppit.get("HR", 0))))
 
-            # Defense card
             with c3:
                 st.markdown('<div class="section-title">Defense</div>', unsafe_allow_html=True)
                 pfld = player_row(fld_m, player_name)
@@ -725,7 +891,6 @@ elif page == "Player Profiles":
                     r2[1].metric("A", str(int_safe(pfld.get("A", 0))))
                     st.metric("DP", str(int_safe(pfld.get("DP", 0))))
 
-            # ---- Middle: Recruiting Grades ----
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
             st.markdown("### Recruiting Grades (20–80) + Percentiles")
 
@@ -740,9 +905,8 @@ elif page == "Player Profiles":
                     row[2].progress(max(0.0, min(1.0, float(pct))))
                     row[3].markdown(f"**{grade}**")
 
-            # ---- Bottom: Coach Notes ----
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
-            st.markdown("### Coach Notes (actionable)")
+            st.markdown("### Player Evaluation Notes")
             notes = build_coach_notes(player_name, bat_m, pit_m)
             st.write("\n".join([f"- {n}" for n in notes]))
 
@@ -754,7 +918,6 @@ elif page == "Player Profiles":
                 render_profile(player_b)
         else:
             render_profile(player_a)
-
 
 # ============================================================
 # LINEUP BUILDER
@@ -771,7 +934,6 @@ elif page == "Lineup Builder":
         lineup = lineup_suggestions(bat_m, min_pa=min_pa)
         st.dataframe(lineup, use_container_width=True)
         st.caption("Logic: top-of-order = OBP + low K%; middle = SLG/OPS impact; bottom = contact/speed/turnover.")
-
 
 # ============================================================
 # EXPORTS (Recruiting One-Pager + Data)

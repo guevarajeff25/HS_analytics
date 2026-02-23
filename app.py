@@ -1,15 +1,21 @@
+# app.py
 import os
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
 
 from utils import (
-    compute_fielding_metrics,
+    load_dataset,
     compute_hitting_metrics,
     compute_pitching_metrics,
-    lineup_suggestions,
-    load_dataset,
+    compute_fielding_metrics,
     top_table,
+    lineup_suggestions,
 )
 
 # ============================================================
@@ -35,8 +41,7 @@ h1, h2, h3 {{ letter-spacing: -0.02em; }}
 section[data-testid="stSidebar"] {{
   border-right: 3px solid {HERITAGE_NAVY};
 }}
-section[data-testid="stSidebar"] h2,
-section[data-testid="stSidebar"] h3 {{
+section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {{
   color: {HERITAGE_NAVY};
 }}
 
@@ -76,19 +81,17 @@ section[data-testid="stSidebar"] h3 {{
 [data-testid="stDataFrame"] {{ border-radius: 14px; overflow: hidden; }}
 
 /* Buttons */
-.stDownloadButton button,
-.stButton button {{
+.stDownloadButton button, .stButton button {{
   border-radius: 12px !important;
   border: 1px solid rgba(49,51,63,.18) !important;
 }}
-.stDownloadButton button:hover,
-.stButton button:hover {{
+.stDownloadButton button:hover, .stButton button:hover {{
   border-color: {HERITAGE_NAVY} !important;
 }}
 
 /* Pills */
 .pill {{
-  display: inline-block;
+  display:inline-block;
   padding: 6px 10px;
   border-radius: 999px;
   background: rgba(95,168,211,.12);
@@ -196,55 +199,55 @@ def team_batting_totals(bat_df: pd.DataFrame | None) -> dict:
     """
     TRUE TEAM TOTALS:
       AVG = H/AB
-      OBP = (H+BB+HBP)/(AB+BB+HBP+SF)  (SF if present)
-      SLG = TB/AB (TB from TB or 1B/2B/3B/HR)
+      OBP = (H+BB+HBP)/(AB+BB+HBP+SF)
+      SLG = TB/AB
       OPS = OBP + SLG
       K% = SO/PA (PA if present else AB+BB+HBP+SF)
       BB% = BB/PA
     """
-    ab = sum_col(bat_df, "AB")
-    h = sum_col(bat_df, "H")
-    bb = sum_col(bat_df, "BB")
-    hbp = sum_col(bat_df, "HBP")
-    sf = sum_col(bat_df, "SF")
-    so = sum_col(bat_df, "SO")
-    pa = sum_col(bat_df, "PA")
+    AB = sum_col(bat_df, "AB")
+    H = sum_col(bat_df, "H")
+    BB = sum_col(bat_df, "BB")
+    HBP = sum_col(bat_df, "HBP")
+    SF = sum_col(bat_df, "SF")
+    SO = sum_col(bat_df, "SO")
+    PA = sum_col(bat_df, "PA")
 
     if bat_df is not None and not bat_df.empty and "TB" in bat_df.columns:
-        tb = sum_col(bat_df, "TB")
+        TB = sum_col(bat_df, "TB")
     else:
-        one_b = sum_col(bat_df, "1B")
-        two_b = sum_col(bat_df, "2B")
-        three_b = sum_col(bat_df, "3B")
-        hr = sum_col(bat_df, "HR")
-        tb = one_b + 2 * two_b + 3 * three_b + 4 * hr
+        oneB = sum_col(bat_df, "1B")
+        twoB = sum_col(bat_df, "2B")
+        threeB = sum_col(bat_df, "3B")
+        HR = sum_col(bat_df, "HR")
+        TB = oneB + 2 * twoB + 3 * threeB + 4 * HR
 
-    if pa <= 0:
-        pa = ab + bb + hbp + sf
+    if PA <= 0:
+        PA = AB + BB + HBP + SF
 
-    avg = (h / ab) if ab > 0 else 0.0
-    obp_den = (ab + bb + hbp + sf) if (ab + bb + hbp + sf) > 0 else 0.0
-    obp = ((h + bb + hbp) / obp_den) if obp_den > 0 else 0.0
-    slg = (tb / ab) if ab > 0 else 0.0
-    ops = obp + slg
-    kp = (so / pa) if pa > 0 else 0.0
-    bbp = (bb / pa) if pa > 0 else 0.0
+    AVG = (H / AB) if AB > 0 else 0.0
+    OBP_den = (AB + BB + HBP + SF) if (AB + BB + HBP + SF) > 0 else 0.0
+    OBP = ((H + BB + HBP) / OBP_den) if OBP_den > 0 else 0.0
+    SLG = (TB / AB) if AB > 0 else 0.0
+    OPS = OBP + SLG
+    Kp = (SO / PA) if PA > 0 else 0.0
+    BBp = (BB / PA) if PA > 0 else 0.0
 
     return {
-        "AB": ab,
-        "H": h,
-        "BB": bb,
-        "HBP": hbp,
-        "SF": sf,
-        "SO": so,
-        "PA": pa,
-        "TB": tb,
-        "AVG": avg,
-        "OBP": obp,
-        "SLG": slg,
-        "OPS": ops,
-        "K%": kp,
-        "BB%": bbp,
+        "AB": AB,
+        "H": H,
+        "BB": BB,
+        "HBP": HBP,
+        "SF": SF,
+        "SO": SO,
+        "PA": PA,
+        "TB": TB,
+        "AVG": AVG,
+        "OBP": OBP,
+        "SLG": SLG,
+        "OPS": OPS,
+        "K%": Kp,
+        "BB%": BBp,
     }
 
 
@@ -271,36 +274,36 @@ def team_pitching_totals(pit_df: pd.DataFrame | None) -> dict:
         }
 
     if "IP_TRUE" in pit_df.columns:
-        ip = float(pd.to_numeric(pit_df["IP_TRUE"], errors="coerce").fillna(0).sum())
+        IP = float(pd.to_numeric(pit_df["IP_TRUE"], errors="coerce").fillna(0).sum())
     else:
-        ip = float(pd.to_numeric(pit_df.get("IP", 0), errors="coerce").fillna(0).sum())
+        IP = float(pd.to_numeric(pit_df.get("IP", 0), errors="coerce").fillna(0).sum())
 
-    bf = sum_col(pit_df, "BF")
-    h = sum_col(pit_df, "H")
-    bb = sum_col(pit_df, "BB")
-    so = sum_col(pit_df, "SO")
-    hr = sum_col(pit_df, "HR")
-    er = sum_col(pit_df, "ER")
+    BF = sum_col(pit_df, "BF")
+    H = sum_col(pit_df, "H")
+    BB = sum_col(pit_df, "BB")
+    SO = sum_col(pit_df, "SO")
+    HR = sum_col(pit_df, "HR")
+    ER = sum_col(pit_df, "ER")
 
-    era = (9.0 * er / ip) if ip > 0 else 0.0
-    whip = ((h + bb) / ip) if ip > 0 else 0.0
-    kbb = (so / bb) if bb > 0 else (float("inf") if so > 0 else 0.0)
-    bbi = (bb / ip) if ip > 0 else 0.0
-    kbf = (so / bf) if bf > 0 else 0.0
+    ERA = (9.0 * ER / IP) if IP > 0 else 0.0
+    WHIP = ((H + BB) / IP) if IP > 0 else 0.0
+    KBB = (SO / BB) if BB > 0 else float("inf") if SO > 0 else 0.0
+    BBINN = (BB / IP) if IP > 0 else 0.0
+    KBF = (SO / BF) if BF > 0 else 0.0
 
     return {
-        "IP": ip,
-        "BF": bf,
-        "H": h,
-        "BB": bb,
-        "SO": so,
-        "HR": hr,
-        "ER": er,
-        "ERA": era,
-        "WHIP": whip,
-        "K/BB": kbb,
-        "BB/INN": bbi,
-        "K/BF": kbf,
+        "IP": IP,
+        "BF": BF,
+        "H": H,
+        "BB": BB,
+        "SO": SO,
+        "HR": HR,
+        "ER": ER,
+        "ERA": ERA,
+        "WHIP": WHIP,
+        "K/BB": KBB,
+        "BB/INN": BBINN,
+        "K/BF": KBF,
     }
 
 
@@ -316,7 +319,6 @@ def load_player_media(path: str = MEDIA_CSV) -> pd.DataFrame:
         if "PLAYER" in mdf.columns:
             mdf["PLAYER"] = mdf["PLAYER"].astype(str).str.strip()
         return mdf
-
     return pd.DataFrame(
         columns=[
             "PLAYER",
@@ -332,17 +334,155 @@ def load_player_media(path: str = MEDIA_CSV) -> pd.DataFrame:
 def media_row(media_df: pd.DataFrame, player: str) -> dict:
     if media_df is None or media_df.empty or "PLAYER" not in media_df.columns:
         return {}
-
     m = media_df[media_df["PLAYER"].astype(str) == str(player)]
     if m.empty:
         return {}
-
     row = m.iloc[0].to_dict()
     return {k: ("" if pd.isna(v) else str(v)) for k, v in row.items()}
 
 
 def is_url(s: str) -> bool:
     return isinstance(s, str) and s.strip().lower().startswith(("http://", "https://"))
+
+
+# ============================================================
+# ONE-PAGER PDF EXPORT (real PDF bytes)
+# ============================================================
+def _hex_to_rl_color(hex_str: str):
+    hs = hex_str.lstrip("#")
+    r = int(hs[0:2], 16) / 255.0
+    g = int(hs[2:4], 16) / 255.0
+    b = int(hs[4:6], 16) / 255.0
+    return colors.Color(r, g, b)
+
+
+def build_one_pager_pdf_bytes(player: str, pbat, ppit, pfld) -> bytes:
+    """
+    Build a real PDF in memory (ReportLab). Returns bytes suitable for st.download_button.
+    """
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    w, h = letter
+
+    navy = _hex_to_rl_color(HERITAGE_NAVY)
+    blue = _hex_to_rl_color(HERITAGE_BLUE)
+    gold = _hex_to_rl_color(HERITAGE_GOLD)
+
+    margin = 0.7 * inch
+    x0 = margin
+    y = h - margin
+
+    # Header bar
+    c.setFillColor(blue)
+    c.roundRect(x0, y - 0.55 * inch, w - 2 * margin, 0.55 * inch, 10, fill=1, stroke=0)
+    c.setFillColor(colors.white)
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(x0 + 0.25 * inch, y - 0.35 * inch, "HS Baseball Recruiting — One-Pager")
+
+    c.setFont("Helvetica-Bold", 20)
+    c.setFillColor(navy)
+    y -= 0.8 * inch
+    c.drawString(x0, y, player)
+
+    c.setFont("Helvetica", 10)
+    c.setFillColor(colors.black)
+    y -= 0.18 * inch
+    c.drawString(x0, y, "Generated from HS Baseball Recruiting Dashboard")
+
+    # Helper to print labeled metric rows
+    def draw_card(title: str, rows: list[tuple[str, str]], left: float, top: float, width: float, height: float):
+        # card bg
+        c.setFillColor(colors.white)
+        c.setStrokeColor(colors.lightgrey)
+        c.roundRect(left, top - height, width, height, 10, fill=1, stroke=1)
+
+        # title
+        c.setFillColor(navy)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(left + 0.18 * inch, top - 0.25 * inch, title)
+
+        # accent line
+        c.setStrokeColor(gold)
+        c.setLineWidth(3)
+        c.line(left + 0.18 * inch, top - 0.30 * inch, left + width - 0.18 * inch, top - 0.30 * inch)
+
+        # rows
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica", 10)
+        yy = top - 0.48 * inch
+        for k, v in rows:
+            if yy < (top - height + 0.22 * inch):
+                break
+            c.setFillColor(colors.HexColor("#333333"))
+            c.drawString(left + 0.18 * inch, yy, str(k))
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold", 10)
+            c.drawRightString(left + width - 0.18 * inch, yy, str(v))
+            c.setFont("Helvetica", 10)
+            yy -= 0.20 * inch
+
+    # Safe getters + formatting
+    def v(row, key, default=None):
+        if row is None:
+            return default
+        try:
+            return row.get(key, default)
+        except Exception:
+            return default
+
+    # Hitting
+    hit_rows = [
+        ("AVG", fmt_no0(v(pbat, "AVG", None), 3) if pbat is not None else "—"),
+        ("OBP", fmt_no0(v(pbat, "OBP", None), 3) if pbat is not None else "—"),
+        ("SLG", fmt_no0(v(pbat, "SLG", None), 3) if pbat is not None else "—"),
+        ("OPS", fmt_no0(v(pbat, "OPS", None), 3) if pbat is not None else "—"),
+        ("BB%", fmt_pct(v(pbat, "BB%", 0), 1) if pbat is not None else "—"),
+        ("K%", fmt_pct(v(pbat, "K%", 0), 1) if pbat is not None else "—"),
+        ("PA", str(int_safe(v(pbat, "PA", 0))) if pbat is not None else "—"),
+        ("XBH", str(int_safe(v(pbat, "XBH", 0))) if pbat is not None else "—"),
+        ("SB", str(int_safe(v(pbat, "SB", 0))) if pbat is not None else "—"),
+    ]
+
+    # Pitching
+    pit_rows = [
+        ("IP", str(v(ppit, "IP", "—")) if ppit is not None else "—"),
+        ("ERA", fmt_no0(v(ppit, "ERA", None), 2) if ppit is not None else "—"),
+        ("WHIP", fmt_no0(v(ppit, "WHIP", None), 2) if ppit is not None else "—"),
+        ("K/BB", fmt_no0(v(ppit, "K/BB", None), 2) if ppit is not None else "—"),
+        ("K/BF", fmt_no0(v(ppit, "K/BF", None), 3) if ppit is not None else "—"),
+        ("BB/INN", fmt_no0(v(ppit, "BB/INN", None), 2) if ppit is not None else "—"),
+        ("HR Allowed", str(int_safe(v(ppit, "HR", 0))) if ppit is not None else "—"),
+    ]
+
+    # Defense
+    def_rows = [
+        ("FPCT", fmt_no0(v(pfld, "FPCT", None), 3) if pfld is not None else "—"),
+        ("TC", str(int_safe(v(pfld, "TC", 0))) if pfld is not None else "—"),
+        ("E", str(int_safe(v(pfld, "E", 0))) if pfld is not None else "—"),
+        ("PO", str(int_safe(v(pfld, "PO", 0))) if pfld is not None else "—"),
+        ("A", str(int_safe(v(pfld, "A", 0))) if pfld is not None else "—"),
+        ("DP", str(int_safe(v(pfld, "DP", 0))) if pfld is not None else "—"),
+    ]
+
+    # Cards layout
+    y -= 0.35 * inch
+    card_top = y
+    card_h = 2.75 * inch
+    gap = 0.25 * inch
+    card_w = (w - 2 * margin - 2 * gap) / 3.0
+
+    draw_card("Hitting", hit_rows, x0, card_top, card_w, card_h)
+    draw_card("Pitching", pit_rows, x0 + card_w + gap, card_top, card_w, card_h)
+    draw_card("Defense", def_rows, x0 + 2 * (card_w + gap), card_top, card_w, card_h)
+
+    # Footer hint
+    c.setFont("Helvetica-Oblique", 9)
+    c.setFillColor(colors.HexColor("#555555"))
+    c.drawString(x0, margin - 0.15 * inch, "Tip: This PDF is dashboard-generated; attach to recruiting emails.")
+    c.showPage()
+    c.save()
+
+    return buf.getvalue()
 
 
 # ============================================================
@@ -369,6 +509,7 @@ with st.sidebar:
 
     st.caption("Upload batting / pitching / fielding CSVs (season totals).")
 
+
 # ============================================================
 # LOAD DATA
 # ============================================================
@@ -379,7 +520,6 @@ else:
     bat_file = st.file_uploader("Batting CSV", type=["csv"], key="bat")
     pit_file = st.file_uploader("Pitching CSV", type=["csv"], key="pit")
     fld_file = st.file_uploader("Fielding CSV", type=["csv"], key="fld")
-
     bat, pit, fld = load_dataset(
         mode="upload",
         batting_file=bat_file,
@@ -478,7 +618,6 @@ if page == "Team Overview":
 
     with right:
         st.markdown("### Pitching leaders")
-
         if pit_m is None or pit_m.empty:
             st.info("Load pitching to see leaders.")
         else:
@@ -492,7 +631,7 @@ if page == "Team Overview":
                 ip_num = pd.to_numeric(pit_show.get("IP", 0), errors="coerce").fillna(0)
                 pit_show = pit_show[ip_num > 0].copy()
 
-            # ✅ Never show helper/legacy columns
+            # Never show helper/legacy columns
             pit_show = pit_show.drop(columns=["IP_DISPLAY", "IP_TRUE", "IP_TRUE_NUM", "IP_NUM"], errors="ignore")
 
             if pit_show.empty:
@@ -513,19 +652,15 @@ if page == "Team Overview":
                 with tabs[0]:
                     df = top_table(pit_show, "WHIP", n=12, ascending=True)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
-
                 with tabs[1]:
                     df = top_table(pit_show, "K/BB", n=12, ascending=False)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
-
                 with tabs[2]:
                     df = top_table(pit_show, "K/BF", n=12, ascending=False)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
-
                 with tabs[3]:
                     df = top_table(pit_show, "BB/INN", n=12, ascending=True)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
-
                 with tabs[4]:
                     df = top_table(pit_show, "ERA", n=12, ascending=True)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
@@ -635,10 +770,8 @@ elif page == "Player Profiles":
         st.warning("No players found. Load at least one CSV.")
     else:
         top_row = st.columns([3, 2, 5])
-
         with top_row[0]:
             player_a = st.selectbox("Player A", players, index=0)
-
         with top_row[1]:
             compare = st.toggle("Compare Players", value=False)
 
@@ -704,7 +837,6 @@ elif page == "Player Profiles":
                     st.caption("No fielding data.")
                 else:
                     st.metric("FPCT", fmt_no0(pfld.get("FPCT", 0), 3))
-
                     r1 = st.columns(2)
                     r1[0].metric("TC", str(int_safe(pfld.get("TC", 0))))
                     r1[1].metric("E", str(int_safe(pfld.get("E", 0))))
@@ -715,10 +847,10 @@ elif page == "Player Profiles":
                     st.metric("DP", str(int_safe(pfld.get("DP", 0))))
 
         if compare and player_b:
-            lcol, rcol = st.columns(2)
-            with lcol:
+            l, r = st.columns(2)
+            with l:
                 render_profile(player_a)
-            with rcol:
+            with r:
                 render_profile(player_b)
         else:
             render_profile(player_a)
@@ -740,14 +872,39 @@ elif page == "Lineup Builder":
         st.caption("Logic: top-of-order = OBP + low K%; middle = SLG/OPS impact; bottom = contact/speed/turnover.")
 
 # ============================================================
-# EXPORTS
+# EXPORTS (PDF one-pager + CSV exports)
 # ============================================================
 elif page == "Exports":
     st.subheader("Exports")
-    st.caption("Computed data tables export (CSV). One-pager export can be added back in later.")
+    st.caption("Download a real PDF one-pager, plus the computed tables as CSV.")
 
     st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
-    st.markdown("### Data Exports")
+
+    # --- One-pager PDF ---
+    st.markdown("### One-Pager Export (PDF)")
+
+    if not players:
+        st.info("No players found. Load batting/pitching/fielding to generate a one-pager.")
+    else:
+        export_player = st.selectbox("Select player", players, index=0, key="onepager_player")
+
+        pbat = player_row(bat_m, export_player)
+        ppit = player_row(pit_m, export_player)
+        pfld = player_row(fld_m, export_player)
+
+        pdf_bytes = build_one_pager_pdf_bytes(export_player, pbat, ppit, pfld)
+
+        st.download_button(
+            "Download One-Pager (PDF)",
+            data=pdf_bytes,
+            file_name=f"{export_player.replace(' ', '_')}_one_pager.pdf",
+            mime="application/pdf",
+        )
+
+    st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+
+    # --- Data exports ---
+    st.markdown("### Data Exports (CSV)")
 
     if bat_m is not None and not bat_m.empty:
         st.download_button(
@@ -761,10 +918,8 @@ elif page == "Exports":
 
     if pit_m is not None and not pit_m.empty:
         pit_export = pit_m.copy()
-        pit_export = pit_export.drop(
-            columns=["IP_TRUE", "IP_DISPLAY", "IP_TRUE_NUM", "IP_NUM"],
-            errors="ignore",
-        )
+        for internal in ["IP_TRUE", "IP_DISPLAY", "IP_TRUE_NUM", "IP_NUM"]:
+            pit_export = pit_export.drop(columns=[internal], errors="ignore")
 
         st.download_button(
             "Download pitching (with computed metrics) CSV",

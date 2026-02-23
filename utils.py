@@ -280,15 +280,32 @@ def compute_fielding_metrics(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def top_table(df: pd.DataFrame, metric: str, n: int = 10, ascending: bool = False) -> pd.DataFrame:
+    """
+    Return a small leaderboard table.
+
+    - Only returns a controlled list of columns (so helper fields like IP_TRUE/IP_DISPLAY never leak).
+    - Drops common helper/legacy columns if present.
+    """
+    if df is None or df.empty or metric not in df.columns:
+        return pd.DataFrame()
+
+    # Hard-drop helper columns if they exist (defensive)
+    safe = df.drop(
+        columns=["IP_DISPLAY", "IP_TRUE", "IP_TRUE_NUM", "IP_NUM"],
+        errors="ignore",
+    ).copy()
+
     cols = ["PLAYER", metric]
-    for extra in ["AVG", "PA", "AB", "H", "HR", "BB", "SO",
-              "OPS", "OBP", "SLG",
-              "IP", "BF", "ER", "WHIP",
-              "TC", "E", "FPCT"]:
-        if extra in df.columns and extra not in cols:
+    for extra in [
+        "AVG", "PA", "AB", "H", "HR", "BB", "SO",
+        "OPS", "OBP", "SLG",
+        "IP", "BF", "ER", "WHIP",
+        "TC", "E", "FPCT",
+    ]:
+        if extra in safe.columns and extra not in cols:
             cols.append(extra)
-    out = df.copy()
-    out = out.sort_values(metric, ascending=ascending).head(n)
+
+    out = safe.sort_values(metric, ascending=ascending).head(n)
     return out[cols]
 
 def lineup_suggestions(bat_df: pd.DataFrame, min_pa: int = 10) -> pd.DataFrame:

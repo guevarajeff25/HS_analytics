@@ -403,14 +403,14 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-st.caption("Team totals are computed from summed stat components (not medians / not averaging player rate stats).")
+st.caption("Team Totals")
 
 
 # ============================================================
 # TEAM OVERVIEW
 # ============================================================
 if page == "Team Overview":
-    st.subheader("Team Overview (True Totals)")
+    st.subheader("Team Overview")
 
     bat_tot = team_batting_totals(bat)
     pit_tot = team_pitching_totals(pit_m if pit_m is not None else pit)
@@ -448,7 +448,7 @@ if page == "Team Overview":
     left, right = st.columns(2)
 
     with left:
-        st.markdown("### Batting leaders")
+        st.markdown("### Batting Leaders")
         if bat_m is None or bat_m.empty:
             st.info("Load batting to see leaders.")
         else:
@@ -473,7 +473,7 @@ if page == "Team Overview":
                     st.dataframe(df_for_display(_format_bat(df)), use_container_width=True)
 
     with right:
-        st.markdown("### Pitching leaders (IP shown as baseball innings)")
+        st.markdown("### Pitching Leaders")
         if pit_m is None or pit_m.empty:
             st.info("Load pitching to see leaders.")
         else:
@@ -535,7 +535,7 @@ if page == "Team Overview":
 # RECRUITING PROFILE (V2-ready: headshot + spray screenshot + videos)
 # ============================================================
 elif page == "Recruiting Profile":
-    st.subheader("Recruiting Profile (D1 Recruiting Card)")
+    st.subheader("Recruiting Profile")
 
     if not players:
         st.warning("No players found. Load at least one CSV.")
@@ -580,7 +580,7 @@ elif page == "Recruiting Profile":
         left, right = st.columns(2)
 
         with left:
-            st.markdown("### Spray Chart (GameChanger screenshot)")
+            st.markdown("### Spray Chart")
             tab1, tab2 = st.tabs(["Batting", "Pitching"])
 
             with tab1:
@@ -598,7 +598,7 @@ elif page == "Recruiting Profile":
                     st.caption("Add SPRAY_PITCHING_URL in player_media.csv")
 
         with right:
-            st.markdown("### Video (highlights)")
+            st.markdown("### Video")
             v1 = m.get("VIDEO_URL_1", "")
             v2 = m.get("VIDEO_URL_2", "")
 
@@ -622,7 +622,7 @@ elif page == "Recruiting Profile":
 # PLAYER PROFILES (minimal view for now; keeps compare)
 # ============================================================
 elif page == "Player Profiles":
-    st.subheader("Player Profiles (D1 Recruiting View)")
+    st.subheader("Player Profiles")
 
     if not players:
         st.warning("No players found. Load at least one CSV.")
@@ -721,7 +721,7 @@ elif page == "Player Profiles":
 # LINEUP BUILDER
 # ============================================================
 elif page == "Lineup Builder":
-    st.subheader("Lineup Builder (transparent logic)")
+    st.subheader("Lineup Builder")
 
     if bat_m is None or bat_m.empty:
         st.warning("Load batting to generate lineup suggestions.")

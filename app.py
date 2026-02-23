@@ -471,19 +471,26 @@ if page == "Team Overview":
                     st.dataframe(df_for_display(_format_bat(df)), use_container_width=True)
 
     with right:
-        st.markdown("### Pitching leaders")
+        st.markdown("### Pitching leaders")  # ✅ remove "(IP shown as baseball innings)"
+
         if pit_m is None or pit_m.empty:
             st.info("Load pitching to see leaders.")
         else:
             pit_show = pit_m.copy()
 
-            # Filter to pitchers with outs-aware innings > 0
-            if "IP_TRUE" in pit_show.columns:
-                pit_show["IP_TRUE_NUM"] = pd.to_numeric(pit_show["IP_TRUE"], errors="coerce").fillna(0)
-                pit_show = pit_show[pit_show["IP_TRUE_NUM"] > 0].copy()
+            # ✅ HARD DROP helper/legacy columns so they never appear in tables
+            pit_show = pit_show.drop(
+                columns=["IP_DISPLAY", "IP_TRUE", "IP_TRUE_NUM", "IP_NUM"],
+                errors="ignore",
+            )
+
+            # Filter to pitchers with innings > 0 (outs-aware if present, else numeric)
+            if "IP_TRUE" in pit_m.columns:
+                ip_true_num = pd.to_numeric(pit_m["IP_TRUE"], errors="coerce").fillna(0)
+                pit_show = pit_show.loc[ip_true_num > 0].copy()
             else:
-                pit_show["IP_NUM"] = pd.to_numeric(pit_show.get("IP", 0), errors="coerce").fillna(0)
-                pit_show = pit_show[pit_show["IP_NUM"] > 0].copy()
+                ip_num = pd.to_numeric(pit_show.get("IP", 0), errors="coerce").fillna(0)
+                pit_show = pit_show.loc[ip_num > 0].copy()
 
             if pit_show.empty:
                 st.info("No pitchers with IP > 0 found in this dataset.")
@@ -494,44 +501,34 @@ if page == "Team Overview":
                 def _format_pit(df: pd.DataFrame) -> pd.DataFrame:
                     out = df.copy()
 
-                    # Format rate stats
                     for col, d in dec.items():
                         if col in out.columns:
                             out[col] = pd.to_numeric(out[col], errors="coerce").apply(lambda v: fmt_no0(v, d))
 
-                    # Ensure IP is treated as text (preserves 12.2 / 21.1 display)
+                    # ✅ preserve baseball notation display for IP (e.g., 12.2 / 21.1)
                     if "IP" in out.columns:
                         out["IP"] = out["IP"].astype(str)
 
-                    # ✅ Strip internal helper columns if they exist (do not display)
-                    for internal in ["IP_TRUE", "IP_TRUE_NUM", "IP_NUM", "IP_DISPLAY"]:
-                        if internal in out.columns:
-                            out = out.drop(columns=[internal])
+                    # ✅ remove any helper columns if they somehow sneak back in
+                    out = out.drop(columns=["IP_DISPLAY", "IP_TRUE", "IP_TRUE_NUM", "IP_NUM"], errors="ignore")
 
                     return out
 
                 with tabs[0]:
                     df = top_table(pit_show, "WHIP", n=12, ascending=True)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
-
                 with tabs[1]:
                     df = top_table(pit_show, "K/BB", n=12, ascending=False)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
-
                 with tabs[2]:
                     df = top_table(pit_show, "K/BF", n=12, ascending=False)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
-
                 with tabs[3]:
                     df = top_table(pit_show, "BB/INN", n=12, ascending=True)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
-
                 with tabs[4]:
                     df = top_table(pit_show, "ERA", n=12, ascending=True)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
-
-    st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
-
     st.markdown("### Defense snapshot")
     if fld_m is None or fld_m.empty:
         st.info("Load fielding to see defense.")

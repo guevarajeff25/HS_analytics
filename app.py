@@ -247,7 +247,8 @@ def team_batting_totals(bat_df: pd.DataFrame | None) -> dict:
 def team_pitching_totals(pit_df: pd.DataFrame | None) -> dict:
     """
     TRUE STAFF TOTALS (outs-aware):
-      IP_TRUE is computed if available; else fall back to numeric IP.
+      Prefer IP_TRUE if present (from utils.compute_pitching_metrics).
+      Otherwise fall back to numeric IP sum (less accurate if .1/.2 present).
     """
     if pit_df is None or pit_df.empty:
         return {
@@ -265,7 +266,6 @@ def team_pitching_totals(pit_df: pd.DataFrame | None) -> dict:
             "K/BF": 0.0,
         }
 
-    # Prefer outs-aware numeric innings from utils.compute_pitching_metrics
     if "IP_TRUE" in pit_df.columns:
         IP = float(pd.to_numeric(pit_df["IP_TRUE"], errors="coerce").fillna(0).sum())
     else:
@@ -403,14 +403,13 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-st.caption("Team Totals")
-
+st.caption("Team totals are computed from summed stat components (not medians / not averaging player rate stats).")
 
 # ============================================================
 # TEAM OVERVIEW
 # ============================================================
 if page == "Team Overview":
-    st.subheader("Team Overview")
+    st.subheader("Team Overview (True Totals)")
 
     bat_tot = team_batting_totals(bat)
     pit_tot = team_pitching_totals(pit_m if pit_m is not None else pit)
@@ -438,8 +437,9 @@ if page == "Team Overview":
     c2[2].metric("Staff BB/INN", fmt_no0(staff_bbi, 2) if staff_bbi is not None else "—")
     c2[3].metric("Staff ERA", fmt_no0(staff_era, 2) if staff_era is not None else "—")
 
+    # NOTE: This is numeric innings (outs-aware). Keep caption clean (no "IP shown as...")
     st.caption(
-        f"Pitching totals used — IP (numeric): {fmt_no0(pit_tot['IP'], 1)} | H: {int(pit_tot['H'])} | "
+        f"Pitching totals used — IP: {fmt_no0(pit_tot['IP'], 1)} | H: {int(pit_tot['H'])} | "
         f"BB: {int(pit_tot['BB'])} | SO: {int(pit_tot['SO'])} | ER: {int(pit_tot['ER'])}"
     )
 
@@ -448,14 +448,12 @@ if page == "Team Overview":
     left, right = st.columns(2)
 
     with left:
-        st.markdown("### Batting Leaders")
+        st.markdown("### Batting leaders")
         if bat_m is None or bat_m.empty:
             st.info("Load batting to see leaders.")
         else:
             tabs = st.tabs(["OPS", "AVG", "OBP", "SLG", "BB%", "K%", "XBH"])
             metrics = ["OPS", "AVG", "OBP", "SLG", "BB%", "K%", "XBH"]
-
-            # display formatting map
             decimals = {"OPS": 3, "AVG": 3, "OBP": 3, "SLG": 3, "BB%": 3, "K%": 3}
 
             def _format_bat(df: pd.DataFrame) -> pd.DataFrame:
@@ -473,13 +471,13 @@ if page == "Team Overview":
                     st.dataframe(df_for_display(_format_bat(df)), use_container_width=True)
 
     with right:
-        st.markdown("### Pitching Leaders")
+        st.markdown("### Pitching leaders")
         if pit_m is None or pit_m.empty:
             st.info("Load pitching to see leaders.")
         else:
             pit_show = pit_m.copy()
 
-            # Filter to pitchers with true innings > 0 (outs-aware)
+            # Filter to pitchers with outs-aware innings > 0
             if "IP_TRUE" in pit_show.columns:
                 pit_show["IP_TRUE_NUM"] = pd.to_numeric(pit_show["IP_TRUE"], errors="coerce").fillna(0)
                 pit_show = pit_show[pit_show["IP_TRUE_NUM"] > 0].copy()
@@ -495,26 +493,39 @@ if page == "Team Overview":
 
                 def _format_pit(df: pd.DataFrame) -> pd.DataFrame:
                     out = df.copy()
+
+                    # Format rate stats
                     for col, d in dec.items():
                         if col in out.columns:
                             out[col] = pd.to_numeric(out[col], errors="coerce").apply(lambda v: fmt_no0(v, d))
-                    # Keep IP as-is (already a string like "12.2"), but ensure it's a string
+
+                    # Ensure IP is treated as text (preserves 12.2 / 21.1 display)
                     if "IP" in out.columns:
                         out["IP"] = out["IP"].astype(str)
+
+                    # ✅ Strip internal helper columns if they exist (do not display)
+                    for internal in ["IP_TRUE", "IP_TRUE_NUM", "IP_NUM", "IP_DISPLAY"]:
+                        if internal in out.columns:
+                            out = out.drop(columns=[internal])
+
                     return out
 
                 with tabs[0]:
                     df = top_table(pit_show, "WHIP", n=12, ascending=True)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+
                 with tabs[1]:
                     df = top_table(pit_show, "K/BB", n=12, ascending=False)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+
                 with tabs[2]:
                     df = top_table(pit_show, "K/BF", n=12, ascending=False)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+
                 with tabs[3]:
                     df = top_table(pit_show, "BB/INN", n=12, ascending=True)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+
                 with tabs[4]:
                     df = top_table(pit_show, "ERA", n=12, ascending=True)
                     st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
@@ -530,9 +541,8 @@ if page == "Team Overview":
             def_table["FPCT"] = pd.to_numeric(def_table["FPCT"], errors="coerce").apply(lambda v: fmt_no0(v, 3))
         st.dataframe(df_for_display(def_table), use_container_width=True)
 
-
 # ============================================================
-# RECRUITING PROFILE (V2-ready: headshot + spray screenshot + videos)
+# RECRUITING PROFILE
 # ============================================================
 elif page == "Recruiting Profile":
     st.subheader("Recruiting Profile")
@@ -570,7 +580,6 @@ elif page == "Recruiting Profile":
                 a.metric("ERA", fmt_no0(ppit.get("ERA", 0), 2))
                 b.metric("WHIP", fmt_no0(ppit.get("WHIP", 0), 2))
                 c.metric("K/BB", fmt_no0(ppit.get("K/BB", 0), 2))
-                # ✅ show baseball-style IP, not 12.7
                 d.metric("IP", str(ppit.get("IP", "0.0")))
             else:
                 st.info("No metrics available for this player yet.")
@@ -613,13 +622,11 @@ elif page == "Recruiting Profile":
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
         st.markdown("### Player Evaluation Notes")
-        # NOTE: you said evaluation templates later — keeping this placeholder for now.
-        st.caption("Notes are currently auto-generated from performance indicators (V2 templates later).")
+        st.caption("Notes are currently placeholder (V2 templates later).")
         st.write("- Keep approach stable and look for marginal gains (BB% up, K% down).")
 
-
 # ============================================================
-# PLAYER PROFILES (minimal view for now; keeps compare)
+# PLAYER PROFILES
 # ============================================================
 elif page == "Player Profiles":
     st.subheader("Player Profiles")
@@ -641,10 +648,7 @@ elif page == "Player Profiles":
 
         def render_profile(player_name: str):
             st.markdown(f"## {player_name}")
-            st.markdown(
-                '<div class="subtle">Quick scan: tools snapshot.</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown('<div class="subtle">Quick scan: tools snapshot.</div>', unsafe_allow_html=True)
 
             c1, c2, c3 = st.columns(3)
 
@@ -716,7 +720,6 @@ elif page == "Player Profiles":
         else:
             render_profile(player_a)
 
-
 # ============================================================
 # LINEUP BUILDER
 # ============================================================
@@ -733,9 +736,8 @@ elif page == "Lineup Builder":
         st.dataframe(lineup, use_container_width=True)
         st.caption("Logic: top-of-order = OBP + low K%; middle = SLG/OPS impact; bottom = contact/speed/turnover.")
 
-
 # ============================================================
-# EXPORTS (Recruiting One-Pager + Data)
+# EXPORTS
 # ============================================================
 elif page == "Exports":
     st.subheader("Exports")
@@ -755,9 +757,15 @@ elif page == "Exports":
         st.info("No batting table to export.")
 
     if pit_m is not None and not pit_m.empty:
+        # ✅ Hide IP_TRUE from export by default (keeps export clean)
+        pit_export = pit_m.copy()
+        for internal in ["IP_TRUE", "IP_DISPLAY", "IP_TRUE_NUM", "IP_NUM"]:
+            if internal in pit_export.columns:
+                pit_export = pit_export.drop(columns=[internal])
+
         st.download_button(
             "Download pitching (with computed metrics) CSV",
-            pit_m.to_csv(index=False).encode("utf-8"),
+            pit_export.to_csv(index=False).encode("utf-8"),
             file_name="pitching_with_metrics.csv",
             mime="text/csv",
         )

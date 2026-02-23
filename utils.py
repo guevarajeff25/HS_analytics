@@ -430,4 +430,3 @@ def lineup_suggestions(bat_df: pd.DataFrame, min_pa: int = 10) -> pd.DataFrame:
     rows += _slot_rows(7, bottom3, "Bottom (contact/speed/turnover)")
 
     return pd.DataFrame(rows).sort_values("Slot")
-```0

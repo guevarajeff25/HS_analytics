@@ -1,15 +1,21 @@
+# utils.py
 import os
 import re
+import math
 import pandas as pd
 
 DEMO_DIR = os.path.join(os.path.dirname(__file__), "demo")
 
 
+# ============================================================
+# CSV LOADING (GameChanger exports)
+# ============================================================
 def read_gamechanger_csv(path_or_file) -> pd.DataFrame:
-    """Read a GameChanger export CSV robustly.
+    """
+    Read a GameChanger export CSV robustly.
 
-    Some GC exports include a *section row* (e.g., 'Batting', 'Pitching') and/or a
-    *glossary row* and may render real headers as the first non-empty row.
+    Some GC exports include a section row (e.g., 'Batting', 'Pitching') and/or
+    glossary rows, and may render the real headers as the first non-empty row.
     This function detects that pattern and returns a clean DataFrame with proper headers.
     """
     # First attempt: normal read
@@ -20,7 +26,9 @@ def read_gamechanger_csv(path_or_file) -> pd.DataFrame:
         df = pd.read_csv(path_or_file, encoding="utf-8-sig", engine="python")
 
     # If the file looks like it has real headers (few Unnamed), keep it.
-    unnamed_ratio = sum(str(c).startswith("Unnamed") for c in df.columns) / max(len(df.columns), 1)
+    unnamed_ratio = (
+        sum(str(c).startswith("Unnamed") for c in df.columns) / max(len(df.columns), 1)
+    )
     if unnamed_ratio < 0.5 and any(c for c in df.columns if str(c).strip()):
         return df
 
@@ -28,48 +36,53 @@ def read_gamechanger_csv(path_or_file) -> pd.DataFrame:
     raw = pd.read_csv(path_or_file, header=None, encoding="utf-8-sig", engine="python")
 
     def norm_cell(x):
-        if pd.isna(x): 
+        if pd.isna(x):
             return ""
         return str(x).strip()
 
-    # Find the row that looks like the header row.
     header_row = None
     for i in range(min(len(raw), 30)):
         row = [norm_cell(v) for v in raw.iloc[i].tolist()]
         joined = "|".join(row).lower()
-        if ("number" in joined and "last" in joined and "first" in joined) or ("player" in joined and "gp" in joined):
+        if ("number" in joined and "last" in joined and "first" in joined) or (
+            "player" in joined and "gp" in joined
+        ):
             header_row = i
             break
 
     if header_row is None:
-        # Give up and return the best-effort df we already read
         return df
 
     header = [norm_cell(v) for v in raw.iloc[header_row].tolist()]
-    # Drop completely empty header cells
     header = [h if h != "" else f"COL_{idx}" for idx, h in enumerate(header)]
 
-    data = raw.iloc[header_row+1:].copy()
+    data = raw.iloc[header_row + 1 :].copy()
     data.columns = header
 
-    # Drop glossary/blank rows
     first_col = data.columns[0]
-    data = data[~data[first_col].astype(str).str.contains(r"^\s*Glossary\s*$", case=False, na=False)]
+    data = data[
+        ~data[first_col]
+        .astype(str)
+        .str.contains(r"^\s*Glossary\s*$", case=False, na=False)
+    ]
     data = data[~data[first_col].astype(str).str.contains(r"^\s*$", na=False)]
-
-    # If there's an all-NaN spacer row right after header, drop it
     data = data.dropna(how="all")
 
     return data.reset_index(drop=True)
 
 
+# ============================================================
+# NORMALIZATION / CLEANUP
+# ============================================================
 def _norm(col: str) -> str:
     """Normalize a column name to a simple key: uppercase alnum only."""
     return re.sub(r"[^A-Z0-9]+", "", str(col).upper())
 
+
 def _rename_by_aliases(df: pd.DataFrame, alias_map: dict) -> pd.DataFrame:
     if df is None:
         return df
+
     cols = {c: _norm(c) for c in df.columns}
     inv = {}
     for original, key in cols.items():
@@ -80,10 +93,11 @@ def _rename_by_aliases(df: pd.DataFrame, alias_map: dict) -> pd.DataFrame:
         for a in aliases:
             akey = _norm(a)
             if akey in inv:
-                # choose the first matching original column
                 rename[inv[akey][0]] = target
                 break
+
     return df.rename(columns=rename)
+
 
 def _coerce_numeric(df: pd.DataFrame, numeric_cols: list) -> pd.DataFrame:
     for c in numeric_cols:
@@ -93,7 +107,8 @@ def _coerce_numeric(df: pd.DataFrame, numeric_cols: list) -> pd.DataFrame:
 
 
 def _ensure_player_name(df: pd.DataFrame) -> pd.DataFrame:
-    """Ensure a canonical PLAYER column exists.
+    """
+    Ensure a canonical PLAYER column exists.
 
     GameChanger exports often have Number/First/Last instead of a single Player column.
     This creates PLAYER = "First Last" (and keeps Number if present).
@@ -102,25 +117,33 @@ def _ensure_player_name(df: pd.DataFrame) -> pd.DataFrame:
         return df
     if "PLAYER" in df.columns:
         return df
-    # common GC columns
+
     first_col = None
     last_col = None
     for c in df.columns:
-        if _norm(c) in ("FIRST",):
+        if _norm(c) == "FIRST":
             first_col = c
-        if _norm(c) in ("LAST",):
+        if _norm(c) == "LAST":
             last_col = c
+
     if first_col and last_col:
-        df["PLAYER"] = df[first_col].astype(str).str.strip() + " " + df[last_col].astype(str).str.strip()
+        df["PLAYER"] = df[first_col].astype(str).str.strip() + " " + df[last_col].astype(
+            str
+        ).str.strip()
         df["PLAYER"] = df["PLAYER"].str.replace(r"\s+", " ", regex=True).str.strip()
+
     return df
 
 
+# ============================================================
+# LOAD DATASET
+# ============================================================
 def load_dataset(mode: str, batting_file=None, pitching_file=None, fielding_file=None):
     """
     Loads either:
       - demo CSVs from ./demo/
       - uploaded CSVs (season totals)
+
     Returns: (bat_df, pit_df, fld_df) which may be None if missing.
     """
     if mode == "demo":
@@ -132,7 +155,6 @@ def load_dataset(mode: str, batting_file=None, pitching_file=None, fielding_file
         pit = read_gamechanger_csv(pitching_file) if pitching_file is not None else None
         fld = read_gamechanger_csv(fielding_file) if fielding_file is not None else None
 
-    # ---- Aliases: add to this list as you see actual GC export variants ----
     bat_aliases = {
         "PLAYER": ["PLAYER", "Player", "NAME"],
         "GP": ["GP", "G"],
@@ -162,26 +184,23 @@ def load_dataset(mode: str, batting_file=None, pitching_file=None, fielding_file
     }
 
     pit_aliases = {
-    "PLAYER": ["PLAYER", "Player", "NAME"],
-    "GP": ["GP", "G"],
-    "GS": ["GS"],
-    "IP": ["IP", "IP_1", "INNINGSPITCHED"],
-    "BF": ["BF", "BF_1", "BATTERSFACED"],
-    "#P": ["#P", "P", "P_1", "PITCHES"],
-
-    # Core pitching stats (handle GC duplicates)
-    "H":  ["H_1", "H", "HITS", "HITSALLOWED"],
-    "R":  ["R_1", "R", "RUNS"],
-    "ER": ["ER_1", "ER", "EARNEDRUNS"],
-    "BB": ["BB_1", "BB", "WALKS", "WALKSALLOWED"],
-    "SO": ["SO_1", "SO", "K_1", "K", "STRIKEOUTS"],
-    "HBP":["HBP_1", "HBP"],
-    "HR": ["HR_1", "HR", "HOMERUNS"],
-
-    "WP": ["WP", "WILDPITCHES"],
-    "ERA": ["ERA"],
-    "WHIP": ["WHIP"],
-}
+        "PLAYER": ["PLAYER", "Player", "NAME"],
+        "GP": ["GP", "G"],
+        "GS": ["GS"],
+        "IP": ["IP", "IP_1", "INNINGSPITCHED"],
+        "BF": ["BF", "BF_1", "BATTERSFACED"],
+        "#P": ["#P", "P", "P_1", "PITCHES"],
+        "H": ["H_1", "H", "HITS", "HITSALLOWED"],
+        "R": ["R_1", "R", "RUNS"],
+        "ER": ["ER_1", "ER", "EARNEDRUNS"],
+        "BB": ["BB_1", "BB", "WALKS", "WALKSALLOWED"],
+        "SO": ["SO_1", "SO", "K_1", "K", "STRIKEOUTS"],
+        "HBP": ["HBP_1", "HBP"],
+        "HR": ["HR_1", "HR", "HOMERUNS"],
+        "WP": ["WP", "WILDPITCHES"],
+        "ERA": ["ERA"],
+        "WHIP": ["WHIP"],
+    }
 
     fld_aliases = {
         "PLAYER": ["PLAYER", "Player", "NAME"],
@@ -198,42 +217,86 @@ def load_dataset(mode: str, batting_file=None, pitching_file=None, fielding_file
     pit = _rename_by_aliases(pit, pit_aliases) if pit is not None else None
     fld = _rename_by_aliases(fld, fld_aliases) if fld is not None else None
 
-    # Ensure a canonical PLAYER column exists (build from First/Last if needed)
     bat = _ensure_player_name(bat)
     pit = _ensure_player_name(pit)
     fld = _ensure_player_name(fld)
 
     return bat, pit, fld
+
+
+# ============================================================
+# HITTING METRICS
+# ============================================================
 def compute_hitting_metrics(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or not len(df):
         return df
 
     df = df.copy()
 
-    # Ensure core columns exist (compute if possible)
-    for col in ["PA","AB","BB","SO","H","2B","3B","HR","HBP","SB","CS","TB","XBH","R","RBI"]:
+    for col in [
+        "PA",
+        "AB",
+        "BB",
+        "SO",
+        "H",
+        "2B",
+        "3B",
+        "HR",
+        "HBP",
+        "SB",
+        "CS",
+        "TB",
+        "XBH",
+        "R",
+        "RBI",
+    ]:
         if col not in df.columns:
             df[col] = 0
 
-    df = _coerce_numeric(df, ["PA","AB","BB","SO","H","2B","3B","HR","HBP","SB","CS","TB","XBH","R","RBI"])
+    df = _coerce_numeric(
+        df,
+        [
+            "PA",
+            "AB",
+            "BB",
+            "SO",
+            "H",
+            "2B",
+            "3B",
+            "HR",
+            "HBP",
+            "SB",
+            "CS",
+            "TB",
+            "XBH",
+            "R",
+            "RBI",
+        ],
+    )
 
-    # Compute TB if missing/zero but components exist
     if (df["TB"] == 0).all():
-        # Singles = H - 2B - 3B - HR (clip at 0)
         singles = (df["H"] - df["2B"] - df["3B"] - df["HR"]).clip(lower=0)
-        df["TB"] = singles + 2*df["2B"] + 3*df["3B"] + 4*df["HR"]
+        df["TB"] = singles + 2 * df["2B"] + 3 * df["3B"] + 4 * df["HR"]
 
-    # Compute XBH if missing/zero
     if (df["XBH"] == 0).all():
         df["XBH"] = df["2B"] + df["3B"] + df["HR"]
 
-    # If H missing but AVG provided, approximate
-    if ("H" in df.columns) and (df["H"] == 0).all() and ("AVG" in df.columns) and ("AB" in df.columns):
-        df["H"] = (pd.to_numeric(df["AVG"], errors="coerce").fillna(0) * df["AB"]).round().astype(int)
+    if (
+        ("H" in df.columns)
+        and (df["H"] == 0).all()
+        and ("AVG" in df.columns)
+        and ("AB" in df.columns)
+    ):
+        df["H"] = (
+            (pd.to_numeric(df["AVG"], errors="coerce").fillna(0) * df["AB"])
+            .round()
+            .astype(int)
+        )
 
-    # Rates (safe division)
     df["AVG"] = (df["H"] / df["AB"].replace(0, pd.NA)).fillna(0)
-    df["OBP"] = ((df["H"] + df["BB"] + df["HBP"]) / df["PA"].replace(0, pd.NA)).fillna(0)
+    df["OBP"] = (
+        (df["H"] + df["BB"] + df["HBP"]) / df["PA"].replace(0, pd.NA)
+    ).fillna(0)
     df["SLG"] = (df["TB"] / df["AB"].replace(0, pd.NA)).fillna(0)
     df["OPS"] = df["OBP"] + df["SLG"]
 
@@ -242,105 +305,97 @@ def compute_hitting_metrics(df: pd.DataFrame) -> pd.DataFrame:
     df["SB%"] = (df["SB"] / (df["SB"] + df["CS"]).replace(0, pd.NA)).fillna(0)
     df["XBH%"] = (df["XBH"] / df["AB"].replace(0, pd.NA)).fillna(0)
 
-    # Round for display
-    for c in ["AVG","OBP","SLG","OPS","BB%","K%","SB%","XBH%"]:
+    for c in ["AVG", "OBP", "SLG", "OPS", "BB%", "K%", "SB%", "XBH%"]:
         df[c] = df[c].astype(float)
 
     return df
 
-import math
 
+# ============================================================
+# PITCHING METRICS (IP baseball notation-safe)
+# ============================================================
 def ip_to_outs(ip) -> int:
     """
     Convert baseball innings to outs.
+
     Accepts:
       - "12.2" meaning 12 innings + 2 outs
       - 12.2 (float) (same meaning)
       - "12" or 12
+
     Returns integer outs.
     """
     if ip is None:
         return 0
 
-    # Normalize to string safely
     s = str(ip).strip()
     if s == "" or s.lower() in {"nan", "none"}:
         return 0
 
     try:
-        # handle whole innings only
         if "." not in s:
-            whole = int(float(s))
-            return whole * 3
+            return int(float(s)) * 3
 
         whole_str, frac_str = s.split(".", 1)
         whole = int(float(whole_str)) if whole_str else 0
 
-        # frac may come in as "1", "2", "0", "10" (from floats), etc.
-        # We only care about the first digit in baseball notation.
         frac_digit = frac_str[:1] if frac_str else "0"
-        if frac_digit not in {"0", "1", "2"}:
-            # if it's something weird, fall back to numeric interpretation
-            v = float(s)
-            whole = int(math.floor(v))
-            frac = round(v - whole, 6)
-            # attempt map .333/.667 etc → 1/2 outs
-            if abs(frac - (1/3)) < 0.01:
-                return whole * 3 + 1
-            if abs(frac - (2/3)) < 0.01:
-                return whole * 3 + 2
-            return whole * 3
+        if frac_digit in {"0", "1", "2"}:
+            return whole * 3 + int(frac_digit)
 
-        outs = int(frac_digit)
-        return whole * 3 + outs
+        # fallback: interpret as true decimal innings (rare)
+        v = float(s)
+        whole = int(math.floor(v))
+        frac = round(v - whole, 6)
+        if abs(frac - (1 / 3)) < 0.01:
+            return whole * 3 + 1
+        if abs(frac - (2 / 3)) < 0.01:
+            return whole * 3 + 2
+        return whole * 3
     except Exception:
         return 0
 
 
 def outs_to_ip_true(outs: int) -> float:
-    """Outs -> true innings as a float (e.g., 38 outs = 12.6667 innings)."""
-    return float(outs) / 3.0
+    """Outs -> true innings as float for math (e.g., 38 outs = 12.6667)."""
+    try:
+        return float(int(outs)) / 3.0
+    except Exception:
+        return 0.0
 
 
-def outs_to_ip_display(outs: int) -> str:
-    """Outs -> baseball display innings (e.g., 38 outs = '12.2')."""
+def outs_to_baseball_ip_str(outs: int) -> str:
+    """Outs -> baseball display (e.g., 38 outs = '12.2')."""
+    try:
+        outs = int(outs)
+    except Exception:
+        return "0.0"
+    if outs <= 0:
+        return "0.0"
     whole = outs // 3
     rem = outs % 3
     return f"{whole}.{rem}"
-    
+
+
 def compute_pitching_metrics(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or not len(df):
         return df
 
     df = df.copy()
 
-    # Ensure columns exist
     for col in ["IP", "BF", "H", "R", "ER", "BB", "SO", "HR", "#P", "HBP", "WP"]:
         if col not in df.columns:
             df[col] = 0
 
-    # Coerce numeric for everything EXCEPT IP (we handle IP separately)
+    # numeric coercion for everything EXCEPT IP (handled separately)
     df = _coerce_numeric(df, ["BF", "H", "R", "ER", "BB", "SO", "HR", "#P", "HBP", "WP"])
 
-    # --- IP handling (baseball notation aware) ---
-    # Convert IP value to outs (supports 12.1 / 12.2)
     outs = df["IP"].apply(ip_to_outs)
 
-    # True innings as decimal (outs/3) for math
-    df["IP_TRUE"] = outs.apply(outs_to_ip)
+    # Internal math innings (keep, but do NOT display in tables)
+    df["IP_TRUE"] = outs.apply(outs_to_ip_true)
 
-    # Overwrite display IP to baseball-style string: 12.0 / 12.1 / 12.2
-    def outs_to_baseball_ip_str(o: int) -> str:
-        try:
-            o = int(o)
-        except Exception:
-            return "0.0"
-        if o <= 0:
-            return "0.0"
-        whole = o // 3
-        rem = o % 3
-        return f"{whole}.{rem}"
-
+    # Display IP in baseball format (NO IP_DISPLAY column)
     df["IP"] = outs.apply(outs_to_baseball_ip_str)
 
     denom = df["IP_TRUE"].replace(0, pd.NA)
@@ -353,67 +408,113 @@ def compute_pitching_metrics(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
+# ============================================================
+# FIELDING METRICS
+# ============================================================
 def compute_fielding_metrics(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or not len(df):
         return df
 
     df = df.copy()
-    for col in ["TC","PO","A","E","DP","TP"]:
+
+    for col in ["TC", "PO", "A", "E", "DP", "TP"]:
         if col not in df.columns:
             df[col] = 0
-    df = _coerce_numeric(df, ["TC","PO","A","E","DP","TP"])
 
+    df = _coerce_numeric(df, ["TC", "PO", "A", "E", "DP", "TP"])
     df["FPCT"] = ((df["PO"] + df["A"]) / df["TC"].replace(0, pd.NA)).fillna(1.0)
+
     return df
 
+
+# ============================================================
+# TABLE HELPERS
+# ============================================================
 def top_table(df: pd.DataFrame, metric: str, n: int = 10, ascending: bool = False) -> pd.DataFrame:
     cols = ["PLAYER", metric]
-    for extra in ["AVG", "PA", "AB", "H", "HR", "BB", "SO",
-              "OPS", "OBP", "SLG",
-              "IP", "BF", "ER", "WHIP",
-              "TC", "E", "FPCT"]:
+
+    for extra in [
+        "AVG",
+        "PA",
+        "AB",
+        "H",
+        "HR",
+        "BB",
+        "SO",
+        "OPS",
+        "OBP",
+        "SLG",
+        "IP",
+        "BF",
+        "ER",
+        "WHIP",
+        "TC",
+        "E",
+        "FPCT",
+    ]:
         if extra in df.columns and extra not in cols:
             cols.append(extra)
-    out = df.copy()
-    out = out.sort_values(metric, ascending=ascending).head(n)
+
+    out = df.sort_values(metric, ascending=ascending).head(n).copy()
+
+    # Never show internal/helper columns even if they exist from older runs
+    helper_cols = ["IP_DISPLAY", "IP_TRUE", "IP_OUTS", "IP_TRUE_NUM", "IP_NUM"]
+    out = out.drop(columns=helper_cols, errors="ignore")
+    cols = [c for c in cols if c not in helper_cols]
+
     return out[cols]
 
+
+# ============================================================
+# LINEUP SUGGESTIONS
+# ============================================================
 def lineup_suggestions(bat_df: pd.DataFrame, min_pa: int = 10) -> pd.DataFrame:
     df = bat_df.copy()
     if "PA" in df.columns:
         df = df[df["PA"] >= min_pa]
 
-    # Fill missing
-    for c in ["OBP","SLG","OPS","K%","SB","BB%"]:
+    for c in ["OBP", "SLG", "OPS", "K%", "SB", "BB%"]:
         if c not in df.columns:
             df[c] = 0
 
-    # Scores
-    df["top_order_score"] = df["OBP"] - 0.5*df["K%"] + 0.05*df["SB"]
-    df["middle_order_score"] = 0.6*df["SLG"] + 0.4*df["OPS"]
-    df["bottom_order_score"] = (1 - df["K%"]) + 0.3*df["SB"] + 0.2*df["BB%"]
+    df["top_order_score"] = df["OBP"] - 0.5 * df["K%"] + 0.05 * df["SB"]
+    df["middle_order_score"] = 0.6 * df["SLG"] + 0.4 * df["OPS"]
+    df["bottom_order_score"] = (1 - df["K%"]) + 0.3 * df["SB"] + 0.2 * df["BB%"]
 
     top3 = df.sort_values("top_order_score", ascending=False).head(3).copy()
-    mid3 = df[~df["PLAYER"].isin(top3["PLAYER"])].sort_values("middle_order_score", ascending=False).head(3).copy()
-    bottom3 = df[~df["PLAYER"].isin(list(top3["PLAYER"]) + list(mid3["PLAYER"]))].sort_values("bottom_order_score", ascending=False).head(3).copy()
+    mid3 = (
+        df[~df["PLAYER"].isin(top3["PLAYER"])]
+        .sort_values("middle_order_score", ascending=False)
+        .head(3)
+        .copy()
+    )
+    bottom3 = (
+        df[~df["PLAYER"].isin(list(top3["PLAYER"]) + list(mid3["PLAYER"]))]
+        .sort_values("bottom_order_score", ascending=False)
+        .head(3)
+        .copy()
+    )
 
     def _slot_rows(slot_start, group, why):
-        rows=[]
+        rows = []
         for i, (_, r) in enumerate(group.iterrows()):
-            rows.append({
-                "Slot": slot_start+i,
-                "PLAYER": r["PLAYER"],
-                "Why": why,
-                "OBP": float(r.get("OBP", 0)),
-                "SLG": float(r.get("SLG", 0)),
-                "OPS": float(r.get("OPS", 0)),
-                "K%": float(r.get("K%", 0)),
-                "SB": int(r.get("SB", 0)),
-                "PA": int(r.get("PA", 0)) if "PA" in r else 0,
-            })
+            rows.append(
+                {
+                    "Slot": slot_start + i,
+                    "PLAYER": r["PLAYER"],
+                    "Why": why,
+                    "OBP": float(r.get("OBP", 0)),
+                    "SLG": float(r.get("SLG", 0)),
+                    "OPS": float(r.get("OPS", 0)),
+                    "K%": float(r.get("K%", 0)),
+                    "SB": int(r.get("SB", 0)),
+                    "PA": int(r.get("PA", 0)) if "PA" in r else 0,
+                }
+            )
         return rows
 
-    rows=[]
+    rows = []
     rows += _slot_rows(1, top3, "Top-of-order (OBP + low K% + speed)")
     rows += _slot_rows(4, mid3, "Middle-order (SLG/OPS impact)")
     rows += _slot_rows(7, bottom3, "Bottom (contact/speed/turnover)")

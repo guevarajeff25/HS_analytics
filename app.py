@@ -4,18 +4,18 @@ from io import BytesIO
 
 import pandas as pd
 import streamlit as st
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
-from reportlab.lib import colors
 
 from utils import (
-    load_dataset,
+    compute_fielding_metrics,
     compute_hitting_metrics,
     compute_pitching_metrics,
-    compute_fielding_metrics,
-    top_table,
     lineup_suggestions,
+    load_dataset,
+    top_table,
 )
 
 # ============================================================
@@ -308,6 +308,81 @@ def team_pitching_totals(pit_df: pd.DataFrame | None) -> dict:
 
 
 # ============================================================
+# SCOUTING GRADE HELPERS (20–80) + PERCENTILES
+# Put these at module-level (NOT nested inside a page or render func)
+# ============================================================
+def grade_20_80(pct: float) -> int:
+    """Convert 0..1 percentile to a scouting grade on 20-80 (rounded to nearest 5)."""
+    try:
+        p = max(0.0, min(1.0, float(pct)))
+        g = 20 + 60 * p
+        return int(round(g / 5.0) * 5)
+    except Exception:
+        return 50
+
+
+def percentile(series: pd.Series, value: float, higher_is_better: bool = True) -> float:
+    """
+    Percentile of a value relative to a series. Returns 0..1.
+    If higher_is_better=False, invert.
+    """
+    s = pd.to_numeric(series, errors="coerce").dropna()
+    if s.empty:
+        return 0.5
+    v = float(value)
+    p = float((s <= v).mean())
+    return p if higher_is_better else float(1.0 - p)
+
+
+def recruiting_grades(player_name: str, bat_m: pd.DataFrame | None, pit_m: pd.DataFrame | None, fld_m: pd.DataFrame | None):
+    """
+    Compute a small set of percentiles + 20-80 grades for a D1-ish quick scan.
+    Returns list[(label, val_str, pct_0to1, grade_20to80)].
+    """
+    grades: list[tuple[str, str, float, int]] = []
+
+    # Hitting (higher better except K%)
+    pbat = player_row(bat_m, player_name)
+    if pbat is not None and bat_m is not None and not bat_m.empty:
+        for label, col, hib, dec in [
+            ("OPS", "OPS", True, 3),
+            ("OBP", "OBP", True, 3),
+            ("SLG", "SLG", True, 3),
+            ("K%", "K%", False, 3),
+            ("BB%", "BB%", True, 3),
+        ]:
+            if col in bat_m.columns:
+                val = float(pbat.get(col, 0) or 0)
+                pct = percentile(bat_m[col], val, higher_is_better=hib)
+                val_str = fmt_pct(val, 1) if label in {"K%", "BB%"} else fmt_no0(val, dec)
+                grades.append((label, val_str, pct, grade_20_80(pct)))
+
+    # Pitching (lower better for ERA/WHIP/BBINN)
+    ppit = player_row(pit_m, player_name)
+    if ppit is not None and pit_m is not None and not pit_m.empty:
+        for label, col, hib, dec in [
+            ("ERA", "ERA", False, 2),
+            ("WHIP", "WHIP", False, 2),
+            ("K/BB", "K/BB", True, 2),
+            ("BB/INN", "BB/INN", False, 2),
+            ("K/BF", "K/BF", True, 3),
+        ]:
+            if col in pit_m.columns:
+                val = float(ppit.get(col, 0) or 0)
+                pct = percentile(pit_m[col], val, higher_is_better=hib)
+                grades.append((label, fmt_no0(val, dec), pct, grade_20_80(pct)))
+
+    # Defense (higher better)
+    pfld = player_row(fld_m, player_name)
+    if pfld is not None and fld_m is not None and not fld_m.empty and "FPCT" in fld_m.columns:
+        val = float(pfld.get("FPCT", 0) or 0)
+        pct = percentile(fld_m["FPCT"], val, higher_is_better=True)
+        grades.append(("FPCT", fmt_no0(val, 3), pct, grade_20_80(pct)))
+
+    return grades
+
+
+# ============================================================
 # OPTIONAL MEDIA (V2-ready, NO submission form yet)
 # ============================================================
 MEDIA_CSV = "player_media.csv"
@@ -389,24 +464,19 @@ def build_one_pager_pdf_bytes(player: str, pbat, ppit, pfld) -> bytes:
     y -= 0.18 * inch
     c.drawString(x0, y, "Generated from HS Baseball Recruiting Dashboard")
 
-    # Helper to print labeled metric rows
     def draw_card(title: str, rows: list[tuple[str, str]], left: float, top: float, width: float, height: float):
-        # card bg
         c.setFillColor(colors.white)
         c.setStrokeColor(colors.lightgrey)
         c.roundRect(left, top - height, width, height, 10, fill=1, stroke=1)
 
-        # title
         c.setFillColor(navy)
         c.setFont("Helvetica-Bold", 11)
         c.drawString(left + 0.18 * inch, top - 0.25 * inch, title)
 
-        # accent line
         c.setStrokeColor(gold)
         c.setLineWidth(3)
         c.line(left + 0.18 * inch, top - 0.30 * inch, left + width - 0.18 * inch, top - 0.30 * inch)
 
-        # rows
         c.setFillColor(colors.black)
         c.setFont("Helvetica", 10)
         yy = top - 0.48 * inch
@@ -421,7 +491,6 @@ def build_one_pager_pdf_bytes(player: str, pbat, ppit, pfld) -> bytes:
             c.setFont("Helvetica", 10)
             yy -= 0.20 * inch
 
-    # Safe getters + formatting
     def v(row, key, default=None):
         if row is None:
             return default
@@ -430,7 +499,6 @@ def build_one_pager_pdf_bytes(player: str, pbat, ppit, pfld) -> bytes:
         except Exception:
             return default
 
-    # Hitting
     hit_rows = [
         ("AVG", fmt_no0(v(pbat, "AVG", None), 3) if pbat is not None else "—"),
         ("OBP", fmt_no0(v(pbat, "OBP", None), 3) if pbat is not None else "—"),
@@ -443,7 +511,6 @@ def build_one_pager_pdf_bytes(player: str, pbat, ppit, pfld) -> bytes:
         ("SB", str(int_safe(v(pbat, "SB", 0))) if pbat is not None else "—"),
     ]
 
-    # Pitching
     pit_rows = [
         ("IP", str(v(ppit, "IP", "—")) if ppit is not None else "—"),
         ("ERA", fmt_no0(v(ppit, "ERA", None), 2) if ppit is not None else "—"),
@@ -454,7 +521,6 @@ def build_one_pager_pdf_bytes(player: str, pbat, ppit, pfld) -> bytes:
         ("HR Allowed", str(int_safe(v(ppit, "HR", 0))) if ppit is not None else "—"),
     ]
 
-    # Defense
     def_rows = [
         ("FPCT", fmt_no0(v(pfld, "FPCT", None), 3) if pfld is not None else "—"),
         ("TC", str(int_safe(v(pfld, "TC", 0))) if pfld is not None else "—"),
@@ -464,7 +530,6 @@ def build_one_pager_pdf_bytes(player: str, pbat, ppit, pfld) -> bytes:
         ("DP", str(int_safe(v(pfld, "DP", 0))) if pfld is not None else "—"),
     ]
 
-    # Cards layout
     y -= 0.35 * inch
     card_top = y
     card_h = 2.75 * inch
@@ -475,7 +540,6 @@ def build_one_pager_pdf_bytes(player: str, pbat, ppit, pfld) -> bytes:
     draw_card("Pitching", pit_rows, x0 + card_w + gap, card_top, card_w, card_h)
     draw_card("Defense", def_rows, x0 + 2 * (card_w + gap), card_top, card_w, card_h)
 
-    # Footer hint
     c.setFont("Helvetica-Oblique", 9)
     c.setFillColor(colors.HexColor("#555555"))
     c.drawString(x0, margin - 0.15 * inch, "Tip: This PDF is dashboard-generated; attach to recruiting emails.")
@@ -623,7 +687,6 @@ if page == "Team Overview":
         else:
             pit_show = pit_m.copy()
 
-            # Filter to pitchers with innings > 0 (outs-aware if present)
             if "IP_TRUE" in pit_show.columns:
                 ip_true = pd.to_numeric(pit_show["IP_TRUE"], errors="coerce").fillna(0)
                 pit_show = pit_show[ip_true > 0].copy()
@@ -631,7 +694,6 @@ if page == "Team Overview":
                 ip_num = pd.to_numeric(pit_show.get("IP", 0), errors="coerce").fillna(0)
                 pit_show = pit_show[ip_num > 0].copy()
 
-            # Never show helper/legacy columns
             pit_show = pit_show.drop(columns=["IP_DISPLAY", "IP_TRUE", "IP_TRUE_NUM", "IP_NUM"], errors="ignore")
 
             if pit_show.empty:
@@ -756,6 +818,20 @@ elif page == "Recruiting Profile":
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
+        st.markdown("### Scouting Grades (20–80) + Percentiles")
+        grades = recruiting_grades(player, bat_m, pit_m, fld_m)
+        if not grades:
+            st.info("Not enough data to compute scouting grades.")
+        else:
+            for label, val_str, pct, grade in grades[:12]:
+                row = st.columns([2, 2, 5, 2])
+                row[0].markdown(f"**{label}**")
+                row[1].markdown(val_str)
+                row[2].progress(max(0.0, min(1.0, float(pct))))
+                row[3].markdown(f"**{grade}**")
+
+        st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+
         st.markdown("### Player Evaluation Notes")
         st.caption("Notes are currently placeholder (V2 templates later).")
         st.write("- Keep approach stable and look for marginal gains (BB% up, K% down).")
@@ -837,6 +913,7 @@ elif page == "Player Profiles":
                     st.caption("No fielding data.")
                 else:
                     st.metric("FPCT", fmt_no0(pfld.get("FPCT", 0), 3))
+
                     r1 = st.columns(2)
                     r1[0].metric("TC", str(int_safe(pfld.get("TC", 0))))
                     r1[1].metric("E", str(int_safe(pfld.get("E", 0))))
@@ -845,6 +922,20 @@ elif page == "Player Profiles":
                     r2[0].metric("PO", str(int_safe(pfld.get("PO", 0))))
                     r2[1].metric("A", str(int_safe(pfld.get("A", 0))))
                     st.metric("DP", str(int_safe(pfld.get("DP", 0))))
+
+            st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+            st.markdown("### Scouting Grades (20–80) + Percentiles")
+
+            grades = recruiting_grades(player_name, bat_m, pit_m, fld_m)
+            if not grades:
+                st.info("Not enough data to compute scouting grades.")
+            else:
+                for label, val_str, pct, grade in grades[:12]:
+                    row = st.columns([2, 2, 5, 2])
+                    row[0].markdown(f"**{label}**")
+                    row[1].markdown(val_str)
+                    row[2].progress(max(0.0, min(1.0, float(pct))))
+                    row[3].markdown(f"**{grade}**")
 
         if compare and player_b:
             l, r = st.columns(2)
@@ -880,7 +971,6 @@ elif page == "Exports":
 
     st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
-    # --- One-pager PDF ---
     st.markdown("### One-Pager Export (PDF)")
 
     if not players:
@@ -903,7 +993,6 @@ elif page == "Exports":
 
     st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
-    # --- Data exports ---
     st.markdown("### Data Exports (CSV)")
 
     if bat_m is not None and not bat_m.empty:

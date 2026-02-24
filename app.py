@@ -305,7 +305,27 @@ def team_pitching_totals(pit_df: pd.DataFrame | None) -> dict:
         "BB/INN": BBINN,
         "K/BF": KBF,
     }
+def render_scouting_grades_compact(grades: list[tuple[str, str, float, int]], max_rows: int = 6):
+    """
+    grades rows are: (label, val_str, pct_0to1, grade_20to80)
+    Compact UI version for Recruiting Profile.
+    """
+    if not grades:
+        st.caption("Scouting grades: not enough data yet.")
+        return
 
+    # Small header
+    st.markdown("#### Scouting Grades (20–80)")
+    st.caption("Quick snapshot (top signals)")
+
+    # Render compact rows
+    show = grades[:max_rows]
+    for label, val_str, pct, grade in show:
+        row = st.columns([2.4, 1.4, 3.2, 1.0])
+        row[0].markdown(f"**{label}**")
+        row[1].markdown(f"<span class='subtle'>{val_str}</span>", unsafe_allow_html=True)
+        row[2].progress(max(0.0, min(1.0, float(pct))))
+        row[3].markdown(f"**{grade}**")
 
 # ============================================================
 # SCOUTING GRADE HELPERS (20–80) + PERCENTILES
@@ -906,16 +926,22 @@ elif page == "Recruiting Profile":
                 )
 
         with right:
+            # --- Compact grades above video ---
+            st.markdown("### Evaluation")
+            grades = recruiting_grades(player, bat_m, pit_m, fld_m)
+            render_scouting_grades_compact(grades, max_rows=6)
+
+            st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+
+            # --- Video ---
             st.markdown("### Video")
             v1 = m.get("VIDEO_URL_1", "")
             v2 = m.get("VIDEO_URL_2", "")
 
             if is_url(v1):
                 st.video(v1)
-            elif v1.strip():
-                st.caption("VIDEO_URL_1 is set but not a valid URL. Use https:// (YouTube unlisted is best).")
             else:
-                st.caption("Add VIDEO_URL or VIDEO_URL_1 (YouTube/Vimeo link recommended).")
+                st.caption("Add VIDEO_URL_1 in player_media.csv")
 
             if is_url(v2):
                 st.video(v2)

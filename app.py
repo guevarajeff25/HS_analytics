@@ -754,7 +754,7 @@ if page == "Team Overview":
             for t, m in zip(tabs, metrics):
                 with t:
                     df = top_table(bat_m, m, n=25, ascending=False)
-                    st.dataframe(df_for_display(_format_bat(df)), use_container_width=True)
+                    st.dataframe(df_for_display(_format_bat(df)), use_container_width=True, hide_index=True)
 
     with right:
         st.markdown("### Pitching leaders")
@@ -789,19 +789,19 @@ if page == "Team Overview":
 
                 with tabs[0]:
                     df = top_table(pit_show, "WHIP", n=12, ascending=True)
-                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True, hide_index=True)
                 with tabs[1]:
                     df = top_table(pit_show, "K/BB", n=12, ascending=False)
-                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True, hide_index=True)
                 with tabs[2]:
                     df = top_table(pit_show, "K/BF", n=12, ascending=False)
-                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True, hide_index=True)
                 with tabs[3]:
                     df = top_table(pit_show, "BB/INN", n=12, ascending=True)
-                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True, hide_index=True)
                 with tabs[4]:
                     df = top_table(pit_show, "ERA", n=12, ascending=True)
-                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True)
+                    st.dataframe(df_for_display(_format_pit(df)), use_container_width=True, hide_index=True)
 
     st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
@@ -812,7 +812,7 @@ if page == "Team Overview":
         def_table = top_table(fld_m, "FPCT", n=25, ascending=False).copy()
         if "FPCT" in def_table.columns:
             def_table["FPCT"] = pd.to_numeric(def_table["FPCT"], errors="coerce").apply(lambda v: fmt_no0(v, 3))
-        st.dataframe(df_for_display(def_table), use_container_width=True)
+        st.dataframe(df_for_display(def_table), use_container_width=True, hide_index=True)
 
 # ============================================================
 # RECRUITING PROFILE

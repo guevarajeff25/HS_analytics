@@ -753,7 +753,7 @@ if page == "Team Overview":
 
             for t, m in zip(tabs, metrics):
                 with t:
-                    df = top_table(bat_m, m, n=12, ascending=False)
+                    df = top_table(bat_m, m, n=25, ascending=False)
                     st.dataframe(df_for_display(_format_bat(df)), use_container_width=True)
 
     with right:
@@ -809,7 +809,7 @@ if page == "Team Overview":
     if fld_m is None or fld_m.empty:
         st.info("Load fielding to see defense.")
     else:
-        def_table = top_table(fld_m, "FPCT", n=12, ascending=False).copy()
+        def_table = top_table(fld_m, "FPCT", n=25, ascending=False).copy()
         if "FPCT" in def_table.columns:
             def_table["FPCT"] = pd.to_numeric(def_table["FPCT"], errors="coerce").apply(lambda v: fmt_no0(v, 3))
         st.dataframe(df_for_display(def_table), use_container_width=True)

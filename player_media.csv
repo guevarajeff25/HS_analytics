@@ -1,8 +1,6 @@
-PLAYER,NUMBER,POSITION,HEIGHT,WEIGHT,BATS,THROWS,GRAD_YEAR,HOMETOWN,PHOTO_URL,SPRAY_CHART_URL,VIDEO_URL_1,VIDEO_URL_2,PLAYER_EVAL_NOTES
-Jett Guevara,4,INF/OF/UTIL,6'0,190,L,R,2026,Discovery Bay CA,assets/headshots/jett_guevara.jpg,assets/spray/jett_guevara_batting.jpg,https://youtu.be/z_AjsIC_uYc,https://youtu.be/ptlkVFdpgvQ,"Plus bat speed; advanced approach;leadership and high motor."
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
+PLAYER,NUMBER,POSITION,HEIGHT,WEIGHT,BATS,THROWS,GRAD_YEAR,HOMETOWN,HEADSHOT_URL,SPRAY_BATTING_URL,SPRAY_PITCHING_URL,VIDEO_URL_1,VIDEO_URL_2,PLAYER_EVAL_NOTES
+Jett Guevara,4,INF/OF/UTIL,6'0,190,L,R,2026,"Discovery Bay CA",assets/headshots/jett_guevara.jpg,assets/spray/jett_guevara_batting.jpg,,https://youtube.com/yourlink1,https://youtube.com/yourlink2,"Plus bat speed; advanced approach; leadership and high motor."
+
 
 
 
